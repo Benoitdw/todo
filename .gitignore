@@ -1,0 +1,18 @@
+# Rust
+target/
+Cargo.lock
+
+# Node
+node_modules/
+dist/
+
+# Tauri
+src-tauri/gen/
+
+# Env
+.env
+.env.*
+
+# OS
+.DS_Store
+Thumbs.db
