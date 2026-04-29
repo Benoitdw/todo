@@ -39,3 +39,45 @@ pub struct SyncResponse {
     pub items: Vec<SyncItem>,
     pub server_time: String,
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct List {
+    pub id: String,
+    pub title: String,
+    pub pos: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Item {
+    pub id: String,
+    pub list_id: String,
+    pub text: String,
+    pub checked: bool,
+    pub pos: f64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateList {
+    pub title: String,
+    pub pos: f64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateList {
+    pub title: Option<String>,
+    pub pos: Option<f64>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateItem {
+    pub list_id: String,
+    pub text: String,
+    pub pos: f64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateItem {
+    pub text: Option<String>,
+    pub checked: Option<bool>,
+    pub pos: Option<f64>,
+}

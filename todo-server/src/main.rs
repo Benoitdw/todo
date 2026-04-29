@@ -6,7 +6,7 @@ mod routes;
 use auth::require_auth;
 use axum::{
     middleware,
-    routing::{get, post},
+    routing::{get, post, put},
     Router,
 };
 use db::Database;
@@ -16,6 +16,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 use tower_http::cors::{Any, CorsLayer};
+use tower_http::services::ServeDir;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -37,11 +38,28 @@ async fn main() {
         .allow_methods(Any)
         .allow_headers(Any);
 
+    let static_dir = std::env::var("STATIC_DIR").unwrap_or_else(|_| "/static".to_string());
+
+    let api_routes = Router::new()
+        .route("/lists", get(routes::get_lists).post(routes::create_list))
+        .route(
+            "/lists/:id",
+            put(routes::update_list).delete(routes::delete_list),
+        )
+        .route("/lists/:id/items", get(routes::get_items))
+        .route("/items", post(routes::create_item))
+        .route(
+            "/items/:id",
+            put(routes::update_item).delete(routes::delete_item),
+        );
+
     let app = Router::new()
         .route("/health", get(routes::health))
         .route("/sync", post(routes::sync_handler))
+        .nest("/api", api_routes)
         .layer(middleware::from_fn(require_auth))
         .layer(cors)
+        .fallback_service(ServeDir::new(static_dir).append_index_html_on_directories(true))
         .with_state(state);
 
     let port: u16 = std::env::var("PORT")

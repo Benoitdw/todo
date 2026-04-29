@@ -1,4 +1,4 @@
-use crate::models::{SyncItem, SyncList};
+use crate::models::{Item, List, SyncItem, SyncList};
 use chrono::Utc;
 use rusqlite::{params, Connection, Result};
 use std::path::Path;
@@ -141,6 +141,138 @@ impl Database {
         }
 
         self.conn.execute_batch("PRAGMA foreign_keys = ON")?;
+        Ok(())
+    }
+
+    // CRUD methods
+
+    pub fn get_lists(&self) -> Result<Vec<List>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, title, pos FROM lists WHERE deleted_at IS NULL ORDER BY pos",
+        )?;
+        let lists = stmt
+            .query_map([], |row| {
+                Ok(List {
+                    id: row.get(0)?,
+                    title: row.get(1)?,
+                    pos: row.get(2)?,
+                })
+            })?
+            .collect::<Result<_>>()?;
+        Ok(lists)
+    }
+
+    pub fn create_list(&self, id: &str, title: &str, pos: f64) -> Result<List> {
+        let updated_at = now();
+        self.conn.execute(
+            "INSERT INTO lists (id, title, pos, updated_at) VALUES (?1, ?2, ?3, ?4)",
+            params![id, title, pos, updated_at],
+        )?;
+        Ok(List {
+            id: id.to_string(),
+            title: title.to_string(),
+            pos,
+        })
+    }
+
+    pub fn update_list(&self, id: &str, title: Option<&str>, pos: Option<f64>) -> Result<()> {
+        let updated_at = now();
+        if let Some(title) = title {
+            self.conn.execute(
+                "UPDATE lists SET title = ?1, updated_at = ?2 WHERE id = ?3 AND deleted_at IS NULL",
+                params![title, updated_at, id],
+            )?;
+        }
+        if let Some(pos) = pos {
+            self.conn.execute(
+                "UPDATE lists SET pos = ?1, updated_at = ?2 WHERE id = ?3 AND deleted_at IS NULL",
+                params![pos, updated_at, id],
+            )?;
+        }
+        Ok(())
+    }
+
+    pub fn delete_list(&self, id: &str) -> Result<()> {
+        let deleted_at = now();
+        self.conn.execute(
+            "UPDATE items SET deleted_at = ?1, updated_at = ?1 WHERE list_id = ?2 AND deleted_at IS NULL",
+            params![deleted_at, id],
+        )?;
+        self.conn.execute(
+            "UPDATE lists SET deleted_at = ?1, updated_at = ?1 WHERE id = ?2 AND deleted_at IS NULL",
+            params![deleted_at, id],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_items(&self, list_id: &str) -> Result<Vec<Item>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, list_id, text, checked, pos FROM items WHERE list_id = ?1 AND deleted_at IS NULL ORDER BY pos",
+        )?;
+        let items = stmt
+            .query_map(params![list_id], |row| {
+                Ok(Item {
+                    id: row.get(0)?,
+                    list_id: row.get(1)?,
+                    text: row.get(2)?,
+                    checked: row.get::<_, i32>(3)? != 0,
+                    pos: row.get(4)?,
+                })
+            })?
+            .collect::<Result<_>>()?;
+        Ok(items)
+    }
+
+    pub fn create_item(&self, id: &str, list_id: &str, text: &str, pos: f64) -> Result<Item> {
+        let updated_at = now();
+        self.conn.execute(
+            "INSERT INTO items (id, list_id, text, checked, pos, updated_at) VALUES (?1, ?2, ?3, 0, ?4, ?5)",
+            params![id, list_id, text, pos, updated_at],
+        )?;
+        Ok(Item {
+            id: id.to_string(),
+            list_id: list_id.to_string(),
+            text: text.to_string(),
+            checked: false,
+            pos,
+        })
+    }
+
+    pub fn update_item(
+        &self,
+        id: &str,
+        text: Option<&str>,
+        checked: Option<bool>,
+        pos: Option<f64>,
+    ) -> Result<()> {
+        let updated_at = now();
+        if let Some(text) = text {
+            self.conn.execute(
+                "UPDATE items SET text = ?1, updated_at = ?2 WHERE id = ?3 AND deleted_at IS NULL",
+                params![text, updated_at, id],
+            )?;
+        }
+        if let Some(checked) = checked {
+            self.conn.execute(
+                "UPDATE items SET checked = ?1, updated_at = ?2 WHERE id = ?3 AND deleted_at IS NULL",
+                params![checked as i32, updated_at, id],
+            )?;
+        }
+        if let Some(pos) = pos {
+            self.conn.execute(
+                "UPDATE items SET pos = ?1, updated_at = ?2 WHERE id = ?3 AND deleted_at IS NULL",
+                params![pos, updated_at, id],
+            )?;
+        }
+        Ok(())
+    }
+
+    pub fn delete_item(&self, id: &str) -> Result<()> {
+        let deleted_at = now();
+        self.conn.execute(
+            "UPDATE items SET deleted_at = ?1, updated_at = ?1 WHERE id = ?2 AND deleted_at IS NULL",
+            params![deleted_at, id],
+        )?;
         Ok(())
     }
 }

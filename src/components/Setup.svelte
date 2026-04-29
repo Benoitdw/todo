@@ -7,6 +7,8 @@
 
   let { onComplete }: Props = $props();
 
+  const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+
   let url = $state('http://');
   let token = $state('');
   let testStatus = $state<'idle' | 'testing' | 'ok' | 'error'>('idle');
@@ -17,7 +19,7 @@
     testStatus = 'testing';
     testError = '';
     try {
-      await api.testConnection(url, token);
+      await api.testConnection(isTauri ? url : '', token);
       testStatus = 'ok';
     } catch (e) {
       testStatus = 'error';
@@ -28,7 +30,7 @@
   async function handleContinue() {
     saving = true;
     try {
-      await api.saveConfig(url, token);
+      await api.saveConfig(isTauri ? url : '', token);
       api.triggerSync().catch(() => {
         // Ignore — might be temporarily offline
       });
@@ -53,20 +55,26 @@
 <div class="setup-overlay">
   <div class="setup-card">
     <h1>Configuration du serveur</h1>
-    <p class="subtitle">Connecte l'application à ton serveur NAS pour activer la synchronisation.</p>
+    {#if isTauri}
+      <p class="subtitle">Connecte l'application à ton serveur NAS pour activer la synchronisation.</p>
+    {:else}
+      <p class="subtitle">Entre ton token d'accès pour te connecter.</p>
+    {/if}
 
-    <div class="field">
-      <label for="url">URL du serveur</label>
-      <input
-        id="url"
-        type="url"
-        bind:value={url}
-        oninput={onUrlInput}
-        placeholder="http://192.168.1.100:8080"
-        autocomplete="off"
-        spellcheck="false"
-      />
-    </div>
+    {#if isTauri}
+      <div class="field">
+        <label for="url">URL du serveur</label>
+        <input
+          id="url"
+          type="url"
+          bind:value={url}
+          oninput={onUrlInput}
+          placeholder="http://192.168.1.100:8080"
+          autocomplete="off"
+          spellcheck="false"
+        />
+      </div>
+    {/if}
 
     <div class="field">
       <label for="token">Token d'accès</label>
@@ -90,7 +98,7 @@
       <button
         class="btn secondary"
         onclick={handleTest}
-        disabled={testStatus === 'testing' || !url || !token}
+        disabled={testStatus === 'testing' || (isTauri ? (!url || !token) : !token)}
       >
         {testStatus === 'testing' ? 'Test en cours…' : 'Tester la connexion'}
       </button>
