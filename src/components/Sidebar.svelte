@@ -9,6 +9,7 @@
     onDelete,
     onRename,
     onReorder,
+    onOpenSettings,
   }: {
     lists: List[];
     selectedId: string | null;
@@ -17,6 +18,7 @@
     onDelete: (id: string) => Promise<void>;
     onRename: (id: string, title: string) => Promise<void>;
     onReorder: (reordered: List[]) => Promise<void>;
+    onOpenSettings: () => void;
   } = $props();
 
   let search = $state('');
@@ -104,6 +106,7 @@
   <div class="toolbar">
     <button class="icon-btn" title="Nouvelle liste" onclick={() => { addingList = true; newTitle = ''; }}>+</button>
     <span class="icon-btn filter-icon">▽</span>
+    <button class="icon-btn settings-btn" title="Paramètres" onclick={onOpenSettings}>⚙</button>
   </div>
 
   {#if addingList}
@@ -198,6 +201,11 @@
     align-items: center;
     gap: 4px;
     padding: 0 2px;
+  }
+
+  .settings-btn {
+    margin-left: auto;
+    font-size: 1rem;
   }
 
   .icon-btn {

@@ -2,7 +2,11 @@
   import { api } from '../lib/api';
   import type { Item, List } from '../lib/types';
 
-  let { list }: { list: List } = $props();
+  let { list, isMobile = false, onOpenSidebar }: {
+    list: List;
+    isMobile?: boolean;
+    onOpenSidebar?: () => void;
+  } = $props();
 
   let items = $state<Item[]>([]);
   let showCompleted = $state(true);
@@ -11,6 +15,8 @@
   let editingId = $state<string | null>(null);
   let editText = $state('');
   let newItemText = $state('');
+  let errorMsg = $state<string | null>(null);
+  let errorTimer: ReturnType<typeof setTimeout> | null = null;
 
   const visible = $derived(showCompleted ? items : items.filter(i => !i.checked));
 
@@ -27,24 +33,51 @@
     return () => { cancelled = true; };
   });
 
+  function showError(msg: string) {
+    errorMsg = msg;
+    if (errorTimer) clearTimeout(errorTimer);
+    errorTimer = setTimeout(() => errorMsg = null, 3000);
+  }
+
   async function addItem() {
     const text = newItemText.trim();
     if (!text) return;
     const pos = items.length > 0 ? items[items.length - 1].pos + 1000 : 1000;
-    const item = await api.createItem(list.id, text, pos);
-    items = [...items, item];
+    const tempId = crypto.randomUUID();
+    const tempItem: Item = { id: tempId, list_id: list.id, text, pos, checked: false };
+    items = [...items, tempItem];
     newItemText = '';
+    try {
+      const item = await api.createItem(list.id, text, pos);
+      items = items.map(i => i.id === tempId ? item : i);
+    } catch {
+      items = items.filter(i => i.id !== tempId);
+      newItemText = text;
+      showError('Erreur lors de la création');
+    }
   }
 
   async function toggleItem(item: Item) {
-    await api.updateItem(item.id, item.text, !item.checked);
-    items = items.map(i => i.id === item.id ? { ...i, checked: !i.checked } : i);
+    const prev = item.checked;
+    items = items.map(i => i.id === item.id ? { ...i, checked: !prev } : i);
+    try {
+      await api.updateItem(item.id, item.text, !prev);
+    } catch {
+      items = items.map(i => i.id === item.id ? { ...i, checked: prev } : i);
+      showError('Erreur lors de la mise à jour');
+    }
   }
 
   async function deleteItem(id: string) {
-    await api.deleteItem(id);
+    const item = items.find(i => i.id === id)!;
     items = items.filter(i => i.id !== id);
     if (editingId === id) editingId = null;
+    try {
+      await api.deleteItem(id);
+    } catch {
+      items = [...items, item].sort((a, b) => a.pos - b.pos);
+      showError('Erreur lors de la suppression');
+    }
   }
 
   function startEdit(item: Item) {
@@ -100,6 +133,9 @@
 
 <main class="todo-list">
   <header>
+    {#if isMobile}
+      <button class="hamburger" onclick={onOpenSidebar} aria-label="Ouvrir le menu">☰</button>
+    {/if}
     <div class="header-text">
       <h1>{list.title}</h1>
       <p class="date">{today}</p>
@@ -112,6 +148,10 @@
       {showCompleted ? '☑' : '☐'}
     </button>
   </header>
+
+  {#if errorMsg}
+    <div class="error-toast">{errorMsg}</div>
+  {/if}
 
   <ul class="items">
     {#each visible as item (item.id)}
@@ -191,6 +231,20 @@
     margin-bottom: 28px;
   }
 
+  .hamburger {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 1.2rem;
+    color: #666;
+    padding: 2px 10px 2px 0;
+    line-height: 1;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+
+  .hamburger:hover { color: #333; }
+
   h1 {
     font-size: 1.4rem;
     font-weight: 600;
@@ -212,9 +266,20 @@
     color: #bbb;
     padding: 0;
     margin-top: 2px;
+    flex-shrink: 0;
   }
 
   .toggle-done:hover { color: #888; }
+
+  .error-toast {
+    background: #fee2e2;
+    color: #b91c1c;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    margin-bottom: 8px;
+    border: 1px solid #fca5a5;
+  }
 
   .items {
     list-style: none;

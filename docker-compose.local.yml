@@ -1,11 +1,12 @@
 services:
   todo:
-    image: ghcr.io/benoitdw/todo-server:latest
+    build:
+      context: .
+      dockerfile: todo-server/Dockerfile
     ports:
       - "8080:8080"
     environment:
       - BEARER_TOKEN=change-me
     volumes:
       - ./data:/data
-      - ./dist:/static
     restart: unless-stopped

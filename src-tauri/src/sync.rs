@@ -56,7 +56,7 @@ pub async fn run_sync(
 ) -> Result<(), String> {
     // Step 1: gather local state (brief lock, no await held)
     let (since, local_lists, local_items) = {
-        let guard = db.lock().map_err(|e| e.to_string())?;
+        let guard = db.lock().unwrap_or_else(|e| e.into_inner());
         let since = guard.get_last_sync_at().map_err(|e| e.to_string())?;
         let (lists, items) =
             guard.get_changes_since(since.as_deref()).map_err(|e| e.to_string())?;
@@ -74,7 +74,7 @@ pub async fn run_sync(
 
     // Step 3: apply server changes (brief lock, no await held)
     {
-        let guard = db.lock().map_err(|e| e.to_string())?;
+        let guard = db.lock().unwrap_or_else(|e| e.into_inner());
         guard
             .apply_sync_changes(&response.lists, &response.items)
             .map_err(|e| e.to_string())?;
