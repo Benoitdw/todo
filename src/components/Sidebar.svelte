@@ -4,6 +4,7 @@
   let {
     lists,
     selectedId,
+    loaded,
     onSelect,
     onCreate,
     onDelete,
@@ -13,6 +14,7 @@
   }: {
     lists: List[];
     selectedId: string | null;
+    loaded: boolean;
     onSelect: (id: string) => void;
     onCreate: (title: string) => Promise<void>;
     onDelete: (id: string) => Promise<void>;
@@ -93,7 +95,7 @@
   });
 </script>
 
-<aside class="sidebar">
+<aside class="sidebar" class:loaded>
   <div class="search-wrap">
     <input
       class="search"
@@ -143,6 +145,9 @@
         ondblclick={() => startEdit(list)}
         onkeydown={(e) => e.key === 'Enter' && onSelect(list.id)}
       >
+        <!-- ② Navigation — active indicator pill -->
+        <div class="nav-pill"></div>
+
         {#if editingId === list.id}
           <input
             class="edit-input"
@@ -169,15 +174,26 @@
 </aside>
 
 <style>
+  /* ① App Load — sidebar */
   .sidebar {
     width: 200px;
     min-width: 200px;
-    border-right: 1px solid #e0e0e0;
-    background: #f5f5f5;
+    border-right: 1px solid var(--border);
+    background: var(--sidebar-bg);
     display: flex;
     flex-direction: column;
     padding: 12px 8px;
     gap: 6px;
+    opacity: 0;
+  }
+
+  .sidebar.loaded {
+    animation: sidebarLoad 0.4s cubic-bezier(0.34, 1.1, 0.64, 1) 45ms both;
+  }
+
+  @keyframes sidebarLoad {
+    from { opacity: 0; transform: translateX(-16px); }
+    to   { opacity: 1; transform: translateX(0); }
   }
 
   .search-wrap {
@@ -187,14 +203,14 @@
   .search {
     width: 100%;
     padding: 6px 8px;
-    border: 1px solid #ddd;
+    border: 1px solid var(--border);
     border-radius: 5px;
     font-size: 0.82rem;
-    background: white;
+    background: var(--input-bg);
     outline: none;
   }
 
-  .search:focus { border-color: #aaa; }
+  .search:focus { border-color: var(--border-strong); }
 
   .toolbar {
     display: flex;
@@ -213,13 +229,13 @@
     border: none;
     cursor: pointer;
     font-size: 1.1rem;
-    color: #666;
+    color: var(--text-muted);
     padding: 2px 6px;
     border-radius: 4px;
     line-height: 1.4;
   }
 
-  .icon-btn:hover { background: #e0e0e0; }
+  .icon-btn:hover { background: var(--hover); }
 
   .filter-icon {
     font-size: 0.85rem;
@@ -229,7 +245,7 @@
   .new-list input {
     width: 100%;
     padding: 5px 8px;
-    border: 1px solid #bbb;
+    border: 1px solid var(--border-strong);
     border-radius: 5px;
     font-size: 0.85rem;
     outline: none;
@@ -244,29 +260,49 @@
     flex: 1;
   }
 
+  /* ② Navigation — list item with pill */
   .list-item {
+    position: relative;
     display: flex;
     align-items: center;
     padding: 7px 10px;
     border-radius: 6px;
     cursor: pointer;
     font-size: 0.88rem;
-    color: #333;
+    color: var(--text);
     border: 1px solid transparent;
   }
 
-  .list-item:hover { background: #eaeaea; }
+  .list-item:hover { background: var(--hover); }
   .list-item:hover .del-btn { opacity: 1; }
 
   .list-item.selected {
-    background: #e0e0e0;
+    background: var(--accent-subtle);
     font-weight: 500;
+    color: var(--accent);
   }
 
   .list-item.drag-over {
-    background: #d8d8d8;
-    border-color: #bbb;
+    background: var(--hover);
+    border-color: var(--border-strong);
     border-style: dashed;
+  }
+
+  .nav-pill {
+    position: absolute;
+    left: 0;
+    top: 4px;
+    bottom: 4px;
+    width: 3px;
+    border-radius: 0 2px 2px 0;
+    background: var(--accent);
+    transform: scaleY(0);
+    transform-origin: center;
+    transition: transform 0.2s cubic-bezier(0.34, 1.4, 0.64, 1);
+  }
+
+  .list-item.selected .nav-pill {
+    transform: scaleY(1);
   }
 
   .list-name {
@@ -280,7 +316,7 @@
     background: none;
     border: none;
     cursor: pointer;
-    color: #bbb;
+    color: var(--text-muted);
     font-size: 1rem;
     opacity: 0;
     padding: 0 2px;
@@ -288,11 +324,11 @@
     flex-shrink: 0;
   }
 
-  .del-btn:hover { color: #e33; }
+  .del-btn:hover { color: var(--danger); }
 
   .edit-input {
     flex: 1;
-    border: 1px solid #bbb;
+    border: 1px solid var(--border-strong);
     border-radius: 3px;
     padding: 1px 5px;
     font-size: 0.88rem;

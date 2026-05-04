@@ -18,6 +18,9 @@
   let errorMsg = $state<string | null>(null);
   let errorTimer: ReturnType<typeof setTimeout> | null = null;
   let syncKey = $state(0);
+  let loaded = $state(false);
+  let navKey = $state(0);
+  let navFading = $state(false);
 
   function showError(msg: string) {
     errorMsg = msg;
@@ -37,6 +40,7 @@
     if (hasConfig) {
       await loadLists();
     }
+    setTimeout(() => { loaded = true; }, 60);
 
     let unlisten: (() => void) | undefined;
     if (isTauri) {
@@ -69,11 +73,18 @@
   async function onSetupComplete() {
     hasConfig = true;
     await loadLists();
+    setTimeout(() => { loaded = true; }, 60);
   }
 
   function handleSelect(id: string) {
-    selectedId = id;
-    if (isMobile) sidebarOpen = false;
+    if (id === selectedId && !isMobile) return;
+    navFading = true;
+    setTimeout(() => {
+      selectedId = id;
+      navKey++;
+      navFading = false;
+      if (isMobile) sidebarOpen = false;
+    }, 140);
   }
 
   async function createList(title: string) {
@@ -134,11 +145,12 @@
   {#if errorMsg}
     <div class="error-toast">{errorMsg}</div>
   {/if}
-  <div class="app">
+  <div class="app" class:loaded>
     {#if sidebarOpen || !isMobile}
       <Sidebar
         {lists}
         {selectedId}
+        {loaded}
         onSelect={handleSelect}
         onCreate={createList}
         onDelete={deleteList}
@@ -147,21 +159,28 @@
         onOpenSettings={() => showSettings = true}
       />
     {/if}
-    {#if showSettings}
-      <Settings onClose={() => showSettings = false} />
-    {/if}
-    {#if selectedList}
-      <TodoList
-        list={selectedList}
-        {isMobile}
-        {syncKey}
-        onOpenSidebar={() => sidebarOpen = true}
-      />
-    {:else}
-      <div class="empty">
-        <p>Crée une liste pour commencer</p>
-      </div>
-    {/if}
+    <div class="main-area">
+      <div class="nav-overlay" class:fading={navFading}></div>
+      {#if showSettings}
+        <Settings onClose={() => showSettings = false} />
+      {/if}
+      {#key navKey}
+        {#if selectedList}
+          <TodoList
+            list={selectedList}
+            {isMobile}
+            {syncKey}
+            {loaded}
+            {navKey}
+            onOpenSidebar={() => sidebarOpen = true}
+          />
+        {:else}
+          <div class="empty">
+            <p>Crée une liste pour commencer</p>
+          </div>
+        {/if}
+      {/key}
+    </div>
   </div>
 {/if}
 
@@ -181,10 +200,44 @@
     pointer-events: none;
   }
 
+  /* ① App Load — shell */
   .app {
     display: flex;
     height: 100vh;
     overflow: hidden;
+    opacity: 0;
+  }
+
+  .app.loaded {
+    animation: shellLoad 0.5s cubic-bezier(0.34, 1.1, 0.64, 1) both;
+  }
+
+  @keyframes shellLoad {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ② Navigation — main area wrapper + overlay */
+  .main-area {
+    flex: 1;
+    position: relative;
+    display: flex;
+    overflow: hidden;
+  }
+
+  .nav-overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 20;
+    background: white;
+    opacity: 0;
+    transition: opacity 0.28s ease-out;
+  }
+
+  .nav-overlay.fading {
+    opacity: 0.6;
+    transition: opacity 0.14s ease-in;
   }
 
   .empty {
