@@ -2,9 +2,10 @@
   import { api } from '../lib/api';
   import type { Item, List } from '../lib/types';
 
-  let { list, isMobile = false, onOpenSidebar }: {
+  let { list, isMobile = false, syncKey = 0, onOpenSidebar }: {
     list: List;
     isMobile?: boolean;
+    syncKey?: number;
     onOpenSidebar?: () => void;
   } = $props();
 
@@ -26,6 +27,7 @@
 
   $effect(() => {
     const id = list.id;
+    const _key = syncKey;
     let cancelled = false;
     api.getItems(id).then(result => {
       if (!cancelled) items = result;

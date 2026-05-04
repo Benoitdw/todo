@@ -7,7 +7,7 @@ mod sync;
 use config::Config;
 use db::Database;
 use std::sync::{Arc, Mutex};
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 pub struct AppState {
     pub db: Arc<Mutex<Database>>,
@@ -33,14 +33,16 @@ pub fn run() {
                 let db_clone = Arc::clone(&db);
                 let base_url = c.server_url.clone();
                 let token = c.token.clone();
+                let app_handle = app.handle().clone();
 
                 tauri::async_runtime::spawn(async move {
                     let client = sync::SyncClient::new(base_url, token);
 
                     // Initial sync attempt
                     if client.health_check().await {
-                        if let Err(e) = sync::run_sync(Arc::clone(&db_clone), &client).await {
-                            eprintln!("[sync] initial sync error: {e}");
+                        match sync::run_sync(Arc::clone(&db_clone), &client).await {
+                            Ok(()) => { app_handle.emit("sync:completed", ()).ok(); }
+                            Err(e) => eprintln!("[sync] initial sync error: {e}"),
                         }
                     }
 
@@ -50,10 +52,9 @@ pub fn run() {
                     loop {
                         interval.tick().await;
                         if client.health_check().await {
-                            if let Err(e) =
-                                sync::run_sync(Arc::clone(&db_clone), &client).await
-                            {
-                                eprintln!("[sync] periodic sync error: {e}");
+                            match sync::run_sync(Arc::clone(&db_clone), &client).await {
+                                Ok(()) => { app_handle.emit("sync:completed", ()).ok(); }
+                                Err(e) => eprintln!("[sync] periodic sync error: {e}"),
                             }
                         }
                     }

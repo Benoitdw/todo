@@ -7,12 +7,23 @@
   import { api } from './lib/api';
   import type { List } from './lib/types';
 
+  const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+
   let lists = $state<List[]>([]);
   let selectedId = $state<string | null>(null);
   let hasConfig = $state<boolean | null>(null);
   let showSettings = $state(false);
   let windowWidth = $state(window.innerWidth);
   let sidebarOpen = $state(true);
+  let errorMsg = $state<string | null>(null);
+  let errorTimer: ReturnType<typeof setTimeout> | null = null;
+  let syncKey = $state(0);
+
+  function showError(msg: string) {
+    errorMsg = msg;
+    if (errorTimer) clearTimeout(errorTimer);
+    errorTimer = setTimeout(() => errorMsg = null, 3000);
+  }
 
   const selectedList = $derived(lists.find(l => l.id === selectedId) ?? null);
   const isMobile = $derived(windowWidth <= 640);
@@ -27,7 +38,19 @@
       await loadLists();
     }
 
-    return () => window.removeEventListener('resize', handler);
+    let unlistenSync: (() => void) | undefined;
+    if (isTauri) {
+      const { listen } = await import('@tauri-apps/api/event');
+      unlistenSync = await listen('sync:completed', async () => {
+        lists = await api.getLists();
+        syncKey++;
+      });
+    }
+
+    return () => {
+      window.removeEventListener('resize', handler);
+      unlistenSync?.();
+    };
   });
 
   async function loadLists() {
@@ -50,21 +73,45 @@
 
   async function createList(title: string) {
     const pos = lists.length > 0 ? lists[lists.length - 1].pos + 1000 : 1000;
-    const newList = await api.createList(title, pos);
-    lists = [...lists, newList];
-    selectedId = newList.id;
+    const tempId = crypto.randomUUID();
+    const tempList: List = { id: tempId, title, pos };
+    lists = [...lists, tempList];
+    selectedId = tempId;
     if (isMobile) sidebarOpen = false;
+    try {
+      const newList = await api.createList(title, pos);
+      lists = lists.map(l => l.id === tempId ? newList : l);
+      selectedId = newList.id;
+    } catch {
+      lists = lists.filter(l => l.id !== tempId);
+      if (selectedId === tempId) selectedId = lists[0]?.id ?? null;
+      showError('Erreur lors de la création de la liste');
+    }
   }
 
   async function deleteList(id: string) {
-    await api.deleteList(id);
+    const list = lists.find(l => l.id === id)!;
+    const prevSelectedId = selectedId;
     lists = lists.filter(l => l.id !== id);
     if (selectedId === id) selectedId = lists[0]?.id ?? null;
+    try {
+      await api.deleteList(id);
+    } catch {
+      lists = [...lists, list].sort((a, b) => a.pos - b.pos);
+      selectedId = prevSelectedId;
+      showError('Erreur lors de la suppression de la liste');
+    }
   }
 
   async function renameList(id: string, title: string) {
-    await api.updateList(id, title);
+    const prevTitle = lists.find(l => l.id === id)?.title ?? '';
     lists = lists.map(l => l.id === id ? { ...l, title } : l);
+    try {
+      await api.updateList(id, title);
+    } catch {
+      lists = lists.map(l => l.id === id ? { ...l, title: prevTitle } : l);
+      showError('Erreur lors du renommage de la liste');
+    }
   }
 
   async function reorderLists(reordered: List[]) {
@@ -79,6 +126,9 @@
 {:else if !hasConfig}
   <Setup onComplete={onSetupComplete} />
 {:else}
+  {#if errorMsg}
+    <div class="error-toast">{errorMsg}</div>
+  {/if}
   <div class="app">
     {#if sidebarOpen || !isMobile}
       <Sidebar
@@ -99,6 +149,7 @@
       <TodoList
         list={selectedList}
         {isMobile}
+        {syncKey}
         onOpenSidebar={() => sidebarOpen = true}
       />
     {:else}
@@ -110,6 +161,21 @@
 {/if}
 
 <style>
+  .error-toast {
+    position: fixed;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #fee2e2;
+    color: #b91c1c;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    border: 1px solid #fca5a5;
+    z-index: 100;
+    pointer-events: none;
+  }
+
   .app {
     display: flex;
     height: 100vh;

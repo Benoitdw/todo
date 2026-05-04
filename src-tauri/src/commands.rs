@@ -5,7 +5,7 @@ use crate::{
     AppState,
 };
 use std::sync::Arc;
-use tauri::State;
+use tauri::{AppHandle, Emitter, State};
 use uuid::Uuid;
 
 fn new_id() -> String {
@@ -116,14 +116,18 @@ pub async fn test_connection(server_url: String, token: String) -> Result<(), St
 }
 
 #[tauri::command]
-pub async fn trigger_sync(state: State<'_, AppState>) -> Result<(), String> {
+pub async fn trigger_sync(state: State<'_, AppState>, app: AppHandle) -> Result<(), String> {
     let cfg = state.config.lock().unwrap().clone();
     match cfg {
         None => Err("No configuration found".to_string()),
         Some(c) => {
             let db = Arc::clone(&state.db);
             let client = SyncClient::new(c.server_url, c.token);
-            run_sync(db, &client).await
+            let result = run_sync(db, &client).await;
+            if result.is_ok() {
+                app.emit("sync:completed", ()).ok();
+            }
+            result
         }
     }
 }
