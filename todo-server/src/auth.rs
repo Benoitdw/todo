@@ -23,7 +23,13 @@ pub async fn require_auth(req: Request<Body>, next: Next) -> Result<Response, St
         .and_then(|q| {
             q.split('&').find_map(|kv| {
                 let mut parts = kv.splitn(2, '=');
-                if parts.next() == Some("token") { parts.next().map(str::to_string) } else { None }
+                if parts.next() == Some("token") {
+                    parts.next().map(|v| {
+                        urlencoding::decode(v).unwrap_or_default().into_owned()
+                    })
+                } else {
+                    None
+                }
             })
         })
         .unwrap_or_default();

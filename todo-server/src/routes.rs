@@ -5,8 +5,11 @@ use crate::{
 };
 use axum::{
     extract::{Path, State},
-    http::StatusCode,
-    response::sse::{Event, KeepAlive, Sse},
+    http::{HeaderValue, StatusCode},
+    response::{
+        sse::{Event, KeepAlive, Sse},
+        IntoResponse,
+    },
     Json,
 };
 use std::{convert::Infallible, sync::{Arc, Mutex}};
@@ -19,11 +22,15 @@ pub async fn health() -> StatusCode {
 
 pub async fn sse_handler(
     State(state): State<AppState>,
-) -> Sse<impl futures_util::Stream<Item = Result<Event, Infallible>>> {
+) -> impl IntoResponse {
     let rx = state.broadcast.subscribe();
     let stream = BroadcastStream::new(rx)
         .map(|_| Ok::<_, Infallible>(Event::default().data("invalidate")));
-    Sse::new(stream).keep_alive(KeepAlive::default())
+    let sse = Sse::new(stream).keep_alive(KeepAlive::default());
+    let mut resp = sse.into_response();
+    // Tell nginx/Synology reverse proxy not to buffer this streaming response
+    resp.headers_mut().insert("X-Accel-Buffering", HeaderValue::from_static("no"));
+    resp
 }
 
 pub async fn sync_handler(
