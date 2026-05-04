@@ -78,4 +78,21 @@ export const api = {
   triggerSync: () => isTauri
     ? invoke<void>('trigger_sync')
     : Promise.resolve(),
+
+  connectEvents: (onInvalidate: () => void): (() => void) => {
+    let closed = false;
+    let current: EventSource | null = null;
+
+    function connect() {
+      if (closed) return;
+      const token = getToken();
+      const es = new EventSource(`/events?token=${encodeURIComponent(token)}`);
+      es.onmessage = () => onInvalidate();
+      es.onerror = () => { es.close(); if (!closed) setTimeout(connect, 5000); };
+      current = es;
+    }
+
+    connect();
+    return () => { closed = true; current?.close(); };
+  },
 };

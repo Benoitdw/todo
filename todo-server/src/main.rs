@@ -15,12 +15,14 @@ use std::{
     path::PathBuf,
     sync::{Arc, Mutex},
 };
+use tokio::sync::broadcast;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::services::ServeDir;
 
 #[derive(Clone)]
 pub struct AppState {
     pub db: Arc<Mutex<Database>>,
+    pub broadcast: broadcast::Sender<()>,
 }
 
 #[tokio::main]
@@ -31,7 +33,8 @@ async fn main() {
     std::fs::create_dir_all(&data_dir).expect("failed to create data directory");
 
     let db = Database::new(&db_path).expect("failed to open database");
-    let state = AppState { db: Arc::new(Mutex::new(db)) };
+    let (broadcast, _) = broadcast::channel::<()>(32);
+    let state = AppState { db: Arc::new(Mutex::new(db)), broadcast };
 
     let cors = CorsLayer::new()
         .allow_origin(Any)
@@ -56,6 +59,7 @@ async fn main() {
     let app = Router::new()
         .route("/health", get(routes::health))
         .route("/sync", post(routes::sync_handler))
+        .route("/events", get(routes::sse_handler))
         .nest("/api", api_routes)
         .layer(middleware::from_fn(require_auth))
         .layer(cors)

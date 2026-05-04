@@ -6,13 +6,24 @@ use crate::{
 use axum::{
     extract::{Path, State},
     http::StatusCode,
+    response::sse::{Event, KeepAlive, Sse},
     Json,
 };
-use std::sync::{Arc, Mutex};
+use std::{convert::Infallible, sync::{Arc, Mutex}};
+use tokio_stream::{wrappers::BroadcastStream, StreamExt as _};
 use uuid::Uuid;
 
 pub async fn health() -> StatusCode {
     StatusCode::OK
+}
+
+pub async fn sse_handler(
+    State(state): State<AppState>,
+) -> Sse<impl futures_util::Stream<Item = Result<Event, Infallible>>> {
+    let rx = state.broadcast.subscribe();
+    let stream = BroadcastStream::new(rx)
+        .map(|_| Ok::<_, Infallible>(Event::default().data("invalidate")));
+    Sse::new(stream).keep_alive(KeepAlive::default())
 }
 
 pub async fn sync_handler(
@@ -22,6 +33,8 @@ pub async fn sync_handler(
     let db: Arc<Mutex<Database>> = state.db;
     let guard = db.lock().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
+    let changed = !req.lists.is_empty() || !req.items.is_empty();
+
     guard
         .apply_sync_changes(&req.lists, &req.items)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
@@ -29,6 +42,10 @@ pub async fn sync_handler(
     let (lists, items) = guard
         .get_changes_since(&req.since)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    if changed {
+        let _ = state.broadcast.send(());
+    }
 
     Ok(Json(SyncResponse {
         lists,
@@ -54,6 +71,7 @@ pub async fn create_list(
     let list = guard
         .create_list(&id, &body.title, body.pos)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let _ = state.broadcast.send(());
     Ok(Json(list))
 }
 
@@ -66,6 +84,7 @@ pub async fn update_list(
     guard
         .update_list(&id, body.title.as_deref(), body.pos)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let _ = state.broadcast.send(());
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -77,6 +96,7 @@ pub async fn delete_list(
     guard
         .delete_list(&id)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let _ = state.broadcast.send(());
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -98,6 +118,7 @@ pub async fn create_item(
     let item = guard
         .create_item(&id, &body.list_id, &body.text, body.pos)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let _ = state.broadcast.send(());
     Ok(Json(item))
 }
 
@@ -110,6 +131,7 @@ pub async fn update_item(
     guard
         .update_item(&id, body.text.as_deref(), body.checked, body.pos)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let _ = state.broadcast.send(());
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -121,5 +143,6 @@ pub async fn delete_item(
     guard
         .delete_item(&id)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let _ = state.broadcast.send(());
     Ok(StatusCode::NO_CONTENT)
 }

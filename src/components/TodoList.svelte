@@ -19,6 +19,13 @@
   let errorMsg = $state<string | null>(null);
   let errorTimer: ReturnType<typeof setTimeout> | null = null;
 
+  // Sync animation state
+  let syncedIds = $state(new Set<string>());
+
+  // Non-reactive bookkeeping for diff
+  let prevItems: Item[] = [];
+  let prevListId = '';
+
   const visible = $derived(showCompleted ? items : items.filter(i => !i.checked));
 
   const today = new Intl.DateTimeFormat('fr-FR', {
@@ -29,9 +36,37 @@
     const id = list.id;
     const _key = syncKey;
     let cancelled = false;
+
     api.getItems(id).then(result => {
-      if (!cancelled) items = result;
+      if (cancelled) return;
+
+      // Reset diff baseline when switching lists
+      if (id !== prevListId) {
+        prevItems = [];
+        prevListId = id;
+      }
+
+      // Diff against previous items (only on remote sync, not initial load)
+      const changed = new Set<string>();
+      if (syncKey > 0 && prevItems.length > 0) {
+        const prevMap = new Map(prevItems.map(it => [it.id, it]));
+        for (const item of result) {
+          const prev = prevMap.get(item.id);
+          if (!prev || prev.checked !== item.checked || prev.text !== item.text) {
+            changed.add(item.id);
+          }
+        }
+      }
+
+      prevItems = result;
+      items = result;
+
+      if (changed.size > 0) {
+        syncedIds = new Set();
+        queueMicrotask(() => { syncedIds = changed; });
+      }
     });
+
     return () => { cancelled = true; };
   });
 
@@ -155,56 +190,64 @@
     <div class="error-toast">{errorMsg}</div>
   {/if}
 
-  <ul class="items">
-    {#each visible as item (item.id)}
-      <li
-        class="item"
-        class:drag-over={dragOverId === item.id}
-        draggable="true"
-        ondragstart={(e) => handleDragStart(e, item.id)}
-        ondragover={(e) => handleDragOver(e, item.id)}
-        ondragleave={() => dragOverId = null}
-        ondrop={(e) => handleDrop(e, item.id)}
-        ondragend={handleDragEnd}
-      >
-        <button
-          class="checkbox"
-          class:checked={item.checked}
-          onclick={() => toggleItem(item)}
-          aria-label={item.checked ? 'Décocher' : 'Cocher'}
-        ></button>
+  <div class="items-container">
+    <ul class="items">
+      {#each visible as item, i (item.id)}
+        {#key syncedIds.has(item.id) ? item.id + syncKey : item.id}
+          <li
+            class="item"
+            class:drag-over={dragOverId === item.id}
+            class:synced={syncedIds.has(item.id)}
+            style={syncedIds.has(item.id)
+              ? `animation-delay: ${80 + (i / Math.max(visible.length, 1)) * 480}ms`
+              : ''}
+            draggable="true"
+            ondragstart={(e) => handleDragStart(e, item.id)}
+            ondragover={(e) => handleDragOver(e, item.id)}
+            ondragleave={() => dragOverId = null}
+            ondrop={(e) => handleDrop(e, item.id)}
+            ondragend={handleDragEnd}
+          >
+            <button
+              class="checkbox"
+              class:checked={item.checked}
+              onclick={() => toggleItem(item)}
+              aria-label={item.checked ? 'Décocher' : 'Cocher'}
+            ></button>
 
-        {#if editingId === item.id}
-          <input
-            class="item-edit"
-            type="text"
-            bind:value={editText}
-            onblur={commitEdit}
-            onkeydown={(e) => {
-              if (e.key === 'Enter') commitEdit();
-              if (e.key === 'Escape') editingId = null;
-            }}
-          />
-        {:else}
-          <span
-            class="item-text"
-            class:done={item.checked}
-            role="button"
-            tabindex="0"
-            ondblclick={() => startEdit(item)}
-            onkeydown={(e) => e.key === 'Enter' && startEdit(item)}
-          >{item.text}</span>
-        {/if}
+            {#if editingId === item.id}
+              <input
+                class="item-edit"
+                type="text"
+                bind:value={editText}
+                onblur={commitEdit}
+                onkeydown={(e) => {
+                  if (e.key === 'Enter') commitEdit();
+                  if (e.key === 'Escape') editingId = null;
+                }}
+              />
+            {:else}
+              <span
+                class="item-text"
+                class:done={item.checked}
+                role="button"
+                tabindex="0"
+                ondblclick={() => startEdit(item)}
+                onkeydown={(e) => e.key === 'Enter' && startEdit(item)}
+              >{item.text}</span>
+            {/if}
 
-        <button
-          class="del-item"
-          tabindex="-1"
-          onclick={() => deleteItem(item.id)}
-          aria-label="Supprimer"
-        >×</button>
-      </li>
-    {/each}
-  </ul>
+            <button
+              class="del-item"
+              tabindex="-1"
+              onclick={() => deleteItem(item.id)}
+              aria-label="Supprimer"
+            >×</button>
+          </li>
+        {/key}
+      {/each}
+    </ul>
+  </div>
 
   <div class="add-item">
     <input
@@ -283,6 +326,15 @@
     border: 1px solid #fca5a5;
   }
 
+  /* Items container — wraps scan line + list, clips the scan animation */
+  .items-container {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
   .items {
     list-style: none;
     display: flex;
@@ -290,6 +342,18 @@
     gap: 2px;
     overflow-y: auto;
     flex: 1;
+  }
+
+  /* ── Item ripple + highlight ───────────────────────────────── */
+  .item.synced {
+    animation: rippleIn 0.9s cubic-bezier(0.34, 1.25, 0.64, 1) both;
+  }
+
+  @keyframes rippleIn {
+    0%   { transform: translateX(-8px); opacity: 0; background: rgba(59, 130, 246, 0.13); }
+    45%  { transform: translateX(2px);  opacity: 1; background: rgba(59, 130, 246, 0.13); }
+    70%  { transform: translateX(-1px); background: rgba(59, 130, 246, 0.07); }
+    100% { transform: translateX(0);    opacity: 1; background: transparent; }
   }
 
   .item {

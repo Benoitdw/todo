@@ -38,10 +38,15 @@
       await loadLists();
     }
 
-    let unlistenSync: (() => void) | undefined;
+    let unlisten: (() => void) | undefined;
     if (isTauri) {
       const { listen } = await import('@tauri-apps/api/event');
-      unlistenSync = await listen('sync:completed', async () => {
+      unlisten = await listen('sync:completed', async () => {
+        lists = await api.getLists();
+        syncKey++;
+      });
+    } else if (hasConfig) {
+      unlisten = api.connectEvents(async () => {
         lists = await api.getLists();
         syncKey++;
       });
@@ -49,7 +54,7 @@
 
     return () => {
       window.removeEventListener('resize', handler);
-      unlistenSync?.();
+      unlisten?.();
     };
   });
 
