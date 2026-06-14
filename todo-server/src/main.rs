@@ -18,6 +18,7 @@ use std::{
 use tokio::sync::broadcast;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::services::ServeDir;
+use tower_http::trace::TraceLayer;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -27,6 +28,13 @@ pub struct AppState {
 
 #[tokio::main]
 async fn main() {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "todo_server=debug,tower_http=debug,axum=debug".into()),
+        )
+        .init();
+
     let data_dir = std::env::var("DATA_DIR").unwrap_or_else(|_| "/data".to_string());
     let db_path = PathBuf::from(&data_dir).join("todo.db");
 
@@ -63,6 +71,7 @@ async fn main() {
         .nest("/api", api_routes)
         .layer(middleware::from_fn(require_auth))
         .layer(cors)
+        .layer(TraceLayer::new_for_http())
         .fallback_service(ServeDir::new(static_dir).append_index_html_on_directories(true))
         .with_state(state);
 
