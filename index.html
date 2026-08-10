@@ -2,7 +2,14 @@
 <html lang="fr">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- viewport-fit=cover            -> we handle the notch ourselves via env(safe-area-inset-*)
+         interactive-widget=resizes-content -> the on-screen keyboard shrinks the viewport
+         instead of sliding it, so the "nouvel item" composer stays visible while typing -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content"
+    />
+    <meta name="theme-color" content="#ffffff" />
     <title>TODO</title>
   </head>
   <body>

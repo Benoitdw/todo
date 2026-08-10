@@ -146,19 +146,26 @@
     <div class="error-toast">{errorMsg}</div>
   {/if}
   <div class="app" class:loaded>
+    {#if isMobile && sidebarOpen}
+      <button class="scrim" onclick={() => sidebarOpen = false} aria-label="Fermer les listes"></button>
+    {/if}
+
     {#if sidebarOpen || !isMobile}
       <Sidebar
         {lists}
         {selectedId}
         {loaded}
+        {isMobile}
         onSelect={handleSelect}
         onCreate={createList}
         onDelete={deleteList}
         onRename={renameList}
         onReorder={reorderLists}
         onOpenSettings={() => showSettings = true}
+        onClose={() => sidebarOpen = false}
       />
     {/if}
+
     <div class="main-area">
       <div class="nav-overlay" class:fading={navFading}></div>
       {#if showSettings}
@@ -176,7 +183,7 @@
           />
         {:else}
           <div class="empty">
-            <p>Crée une liste pour commencer</p>
+            <p class="kicker">Crée une liste pour commencer</p>
           </div>
         {/if}
       {/key}
@@ -187,16 +194,18 @@
 <style>
   .error-toast {
     position: fixed;
-    bottom: 16px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: #fee2e2;
-    color: #b91c1c;
-    padding: 8px 16px;
-    border-radius: 6px;
-    font-size: 0.85rem;
-    border: 1px solid #fca5a5;
-    z-index: 100;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 120;
+    background: var(--accent);
+    color: var(--paper);
+    padding: var(--bl) var(--margin) calc(var(--bl) + env(safe-area-inset-bottom, 0px));
+    font-family: var(--mono);
+    font-size: 11px;
+    line-height: var(--lh);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
     pointer-events: none;
   }
 
@@ -204,6 +213,7 @@
   .app {
     display: flex;
     height: 100vh;
+    height: 100dvh;
     overflow: hidden;
     opacity: 0;
   }
@@ -217,11 +227,28 @@
     to   { opacity: 1; transform: translateY(0); }
   }
 
+  /* mobile drawer scrim */
+  .scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 70;
+    background: rgba(17, 19, 21, 0.32);
+    border: none;
+    cursor: pointer;
+    animation: scrimIn 0.24s ease both;
+  }
+
+  @keyframes scrimIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+
   /* ② Navigation — main area wrapper + overlay */
   .main-area {
     flex: 1;
     position: relative;
     display: flex;
+    min-width: 0;
     overflow: hidden;
   }
 
@@ -230,7 +257,7 @@
     inset: 0;
     pointer-events: none;
     z-index: 20;
-    background: white;
+    background: var(--paper);
     opacity: 0;
     transition: opacity 0.28s ease-out;
   }
@@ -245,7 +272,5 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #aaa;
-    font-size: 0.9rem;
   }
 </style>

@@ -53,18 +53,23 @@
 </script>
 
 <div class="setup-overlay">
-  <div class="setup-card">
-    <h1>Configuration du serveur</h1>
+  <div class="card">
+    <p class="kicker accent">Configuration</p>
+    <div class="rule ink"></div>
+
+    <h1 class="display">Serveur</h1>
+
     {#if isTauri}
-      <p class="subtitle">Connecte l'application à ton serveur NAS pour activer la synchronisation.</p>
+      <p class="body lede">Connecte l'application à ton serveur NAS pour activer la synchronisation.</p>
     {:else}
-      <p class="subtitle">Entre ton token d'accès pour te connecter.</p>
+      <p class="body lede">Entre ton token d'accès pour te connecter.</p>
     {/if}
 
     {#if isTauri}
-      <div class="field">
-        <label for="url">URL du serveur</label>
+      <div class="row">
+        <label class="kicker" for="url">URL du serveur</label>
         <input
+          class="field"
           id="url"
           type="url"
           bind:value={url}
@@ -76,9 +81,10 @@
       </div>
     {/if}
 
-    <div class="field">
-      <label for="token">Token d'accès</label>
+    <div class="row">
+      <label class="kicker" for="token">Token d'accès</label>
       <input
+        class="field"
         id="token"
         type="password"
         bind:value={token}
@@ -96,11 +102,11 @@
 
     <div class="actions">
       <button
-        class="btn secondary"
+        class="btn"
         onclick={handleTest}
         disabled={testStatus === 'testing' || (isTauri ? (!url || !token) : !token)}
       >
-        {testStatus === 'testing' ? 'Test en cours…' : 'Tester la connexion'}
+        {testStatus === 'testing' ? 'Test…' : 'Tester'}
       </button>
 
       <button
@@ -118,121 +124,63 @@
   .setup-overlay {
     position: fixed;
     inset: 0;
-    background: #f5f5f5;
+    background: var(--paper);
     display: flex;
     align-items: center;
     justify-content: center;
+    padding: var(--lh) var(--margin);
     z-index: 100;
+    overflow-y: auto;
   }
 
-  .setup-card {
-    background: #fff;
-    border: 1px solid #e0e0e0;
-    border-radius: 8px;
-    padding: 2rem 2.5rem;
+  .card {
     width: 100%;
-    max-width: 420px;
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+    max-width: 456px;
   }
 
-  h1 {
-    margin: 0 0 0.4rem;
-    font-size: 1.25rem;
-    font-weight: 600;
-    color: #111;
+  .display {
+    font-size: 48px;
+    line-height: 56px;               /* 7 baselines */
+    font-weight: 800;
+    letter-spacing: -0.035em;
+    margin-bottom: var(--bl);
   }
 
-  .subtitle {
-    margin: 0 0 1.5rem;
-    font-size: 0.875rem;
-    color: #666;
-    line-height: 1.5;
+  .lede {
+    color: var(--ink-mid);
+    margin-bottom: var(--lh);
+    max-width: 40ch;
   }
 
-  .field {
+  .row {
     display: flex;
     flex-direction: column;
-    gap: 0.35rem;
-    margin-bottom: 1rem;
-  }
-
-  label {
-    font-size: 0.8rem;
-    font-weight: 500;
-    color: #444;
-  }
-
-  input {
-    padding: 0.5rem 0.65rem;
-    border: 1px solid #d0d0d0;
-    border-radius: 5px;
-    font-size: 0.9rem;
-    color: #111;
-    background: #fff;
-    outline: none;
-    transition: border-color 0.15s;
-  }
-
-  input:focus {
-    border-color: #555;
+    gap: var(--bl);
+    margin-bottom: var(--lh);
   }
 
   .status {
-    font-size: 0.82rem;
-    margin: 0.5rem 0 0.75rem;
-    padding: 0.4rem 0.65rem;
-    border-radius: 4px;
+    font-family: var(--mono);
+    font-size: 11px;
+    line-height: var(--lh);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    padding-left: 10px;
+    margin-bottom: var(--lh);
   }
 
-  .status.ok {
-    background: #f0faf0;
-    color: #2a7a2a;
-    border: 1px solid #b8e0b8;
-  }
-
-  .status.error {
-    background: #fff5f5;
-    color: #a00;
-    border: 1px solid #f0c0c0;
-  }
+  .status.ok    { color: var(--ink); border-left: 2px solid var(--ink); }
+  .status.error { color: var(--accent); border-left: 2px solid var(--accent); }
 
   .actions {
     display: flex;
-    gap: 0.65rem;
-    margin-top: 1.25rem;
-    justify-content: flex-end;
+    gap: var(--bl);
+    margin-top: var(--lh);
   }
 
-  .btn {
-    padding: 0.5rem 1.1rem;
-    border-radius: 5px;
-    font-size: 0.875rem;
-    font-weight: 500;
-    cursor: pointer;
-    border: none;
-    transition: background 0.15s, opacity 0.15s;
-  }
+  .actions .btn { flex: 1; }
 
-  .btn:disabled {
-    opacity: 0.45;
-    cursor: not-allowed;
-  }
-
-  .btn.secondary {
-    background: #eee;
-    color: #333;
-  }
-
-  .btn.secondary:hover:not(:disabled) {
-    background: #e0e0e0;
-  }
-
-  .btn.primary {
-    background: #222;
-    color: #fff;
-  }
-
-  .btn.primary:hover:not(:disabled) {
-    background: #111;
+  @media (max-width: 640px) {
+    .display { font-size: 34px; line-height: 40px; }
   }
 </style>

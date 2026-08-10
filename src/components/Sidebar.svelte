@@ -5,22 +5,26 @@
     lists,
     selectedId,
     loaded,
+    isMobile = false,
     onSelect,
     onCreate,
     onDelete,
     onRename,
     onReorder,
     onOpenSettings,
+    onClose,
   }: {
     lists: List[];
     selectedId: string | null;
     loaded: boolean;
+    isMobile?: boolean;
     onSelect: (id: string) => void;
     onCreate: (title: string) => Promise<void>;
     onDelete: (id: string) => Promise<void>;
     onRename: (id: string, title: string) => Promise<void>;
     onReorder: (reordered: List[]) => Promise<void>;
     onOpenSettings: () => void;
+    onClose?: () => void;
   } = $props();
 
   let search = $state('');
@@ -96,41 +100,40 @@
 </script>
 
 <aside class="sidebar" class:loaded>
-  <div class="search-wrap">
-    <input
-      class="search"
-      type="text"
-      placeholder="Rechercher..."
-      bind:value={search}
-    />
+  <div class="head">
+    <p class="kicker">Listes</p>
+    <span class="folio count">{String(lists.length).padStart(2, '0')}</span>
+    {#if isMobile}
+      <button class="close" onclick={onClose} aria-label="Fermer">×</button>
+    {/if}
   </div>
 
-  <div class="toolbar">
-    <button class="icon-btn" title="Nouvelle liste" onclick={() => { addingList = true; newTitle = ''; }}>+</button>
-    <span class="icon-btn filter-icon">▽</span>
-    <button class="icon-btn settings-btn" title="Paramètres" onclick={onOpenSettings}>⚙</button>
-  </div>
+  <input
+    class="search"
+    type="text"
+    placeholder="Rechercher"
+    bind:value={search}
+  />
 
   {#if addingList}
-    <div class="new-list">
-      <input
-        bind:this={newInputEl}
-        type="text"
-        placeholder="Nom de la liste"
-        bind:value={newTitle}
-        onkeydown={(e) => {
-          if (e.key === 'Enter') handleCreate();
-          if (e.key === 'Escape') { addingList = false; newTitle = ''; }
-        }}
-        onblur={handleCreate}
-      />
-    </div>
+    <input
+      class="search new"
+      bind:this={newInputEl}
+      type="text"
+      placeholder="Nom de la liste"
+      bind:value={newTitle}
+      onkeydown={(e) => {
+        if (e.key === 'Enter') handleCreate();
+        if (e.key === 'Escape') { addingList = false; newTitle = ''; }
+      }}
+      onblur={handleCreate}
+    />
   {/if}
 
-  <ul class="list-nav">
+  <ul class="nav">
     {#each filtered as list (list.id)}
       <li
-        class="list-item"
+        class="row"
         class:selected={selectedId === list.id}
         class:drag-over={dragOverId === list.id}
         draggable="true"
@@ -145,12 +148,12 @@
         ondblclick={() => startEdit(list)}
         onkeydown={(e) => e.key === 'Enter' && onSelect(list.id)}
       >
-        <!-- ② Navigation — active indicator pill -->
-        <div class="nav-pill"></div>
+        <!-- ② Navigation — active indicator bar -->
+        <span class="bar"></span>
 
         {#if editingId === list.id}
           <input
-            class="edit-input"
+            class="edit"
             type="text"
             bind:value={editTitle}
             onblur={commitEdit}
@@ -160,30 +163,39 @@
             }}
           />
         {:else}
-          <span class="list-name">{list.title}</span>
+          <span class="name">{list.title}</span>
           <button
-            class="del-btn"
+            class="del"
             tabindex="-1"
             title="Supprimer"
             onclick={(e) => { e.stopPropagation(); onDelete(list.id); }}
+            aria-label="Supprimer la liste"
           >×</button>
         {/if}
       </li>
     {/each}
   </ul>
+
+  <div class="foot">
+    <button class="action" onclick={() => { addingList = true; newTitle = ''; }}>
+      + &nbsp;Nouvelle liste
+    </button>
+    <div class="foot-row">
+      <button class="action" onclick={onOpenSettings}>Réglages</button>
+    </div>
+  </div>
 </aside>
 
 <style>
   /* ① App Load — sidebar */
   .sidebar {
-    width: 200px;
-    min-width: 200px;
-    border-right: 1px solid var(--border);
-    background: var(--sidebar-bg);
+    width: var(--sidebar);
+    min-width: var(--sidebar);
+    border-right: 1px solid var(--ink);
+    background: var(--paper);
     display: flex;
     flex-direction: column;
-    padding: 12px 8px;
-    gap: 6px;
+    padding: var(--lh) 24px calc(var(--lh) + env(safe-area-inset-bottom, 0px));
     opacity: 0;
   }
 
@@ -196,142 +208,168 @@
     to   { opacity: 1; transform: translateX(0); }
   }
 
-  .search-wrap {
-    padding: 0 2px;
+  .head {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    height: var(--lh);
+    margin-bottom: var(--lh);
+  }
+
+  .count { margin-left: auto; }
+
+  .close {
+    font-size: 22px;
+    line-height: var(--lh);
+    color: var(--ink);
+    padding-left: 8px;
   }
 
   .search {
-    width: 100%;
-    padding: 6px 8px;
-    border: 1px solid var(--border);
-    border-radius: 5px;
-    font-size: 0.82rem;
-    background: var(--input-bg);
+    height: 32px;                    /* 4 baselines */
+    padding: 0 8px;
+    margin-bottom: var(--bl);
+    border: 1px solid var(--rule);
+    background: var(--paper);
     outline: none;
+    font-size: 16px;
+    flex-shrink: 0;
   }
 
-  .search:focus { border-color: var(--border-strong); }
+  .search::placeholder { color: var(--ink-faint); }
+  .search:focus { border-color: var(--ink); }
+  .search.new { border-color: var(--accent); }
 
-  .toolbar {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 0 2px;
-  }
-
-  .settings-btn {
-    margin-left: auto;
-    font-size: 1rem;
-  }
-
-  .icon-btn {
-    background: none;
-    border: none;
-    cursor: pointer;
-    font-size: 1.1rem;
-    color: var(--text-muted);
-    padding: 2px 6px;
-    border-radius: 4px;
-    line-height: 1.4;
-  }
-
-  .icon-btn:hover { background: var(--hover); }
-
-  .filter-icon {
-    font-size: 0.85rem;
-    cursor: default;
-  }
-
-  .new-list input {
-    width: 100%;
-    padding: 5px 8px;
-    border: 1px solid var(--border-strong);
-    border-radius: 5px;
-    font-size: 0.85rem;
-    outline: none;
-  }
-
-  .list-nav {
+  .nav {
     list-style: none;
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
     overflow-y: auto;
     flex: 1;
+    margin-top: var(--bl);
+    padding-top: var(--bl);
+    border-top: 1px solid var(--rule);
+    scrollbar-width: none;
   }
+  .nav::-webkit-scrollbar { width: 0; }
 
-  /* ② Navigation — list item with pill */
-  .list-item {
+  /* ② Navigation — 32px rows, one accent bar for the active list */
+  .row {
     position: relative;
     display: flex;
     align-items: center;
-    padding: 7px 10px;
-    border-radius: 6px;
+    height: 32px;                    /* 4 baselines */
+    padding-left: 12px;
     cursor: pointer;
-    font-size: 0.88rem;
-    color: var(--text);
-    border: 1px solid transparent;
+    font-size: 15px;
+    color: var(--ink-mid);
+    transition: color 0.14s ease, background 0.14s ease;
   }
 
-  .list-item:hover { background: var(--hover); }
-  .list-item:hover .del-btn { opacity: 1; }
+  .row:hover { background: var(--wash); color: var(--ink); }
+  .row:hover .del { opacity: 1; }
 
-  .list-item.selected {
-    background: var(--accent-subtle);
-    font-weight: 500;
-    color: var(--accent);
+  .row.selected {
+    color: var(--ink);
+    font-weight: 600;
   }
 
-  .list-item.drag-over {
-    background: var(--hover);
-    border-color: var(--border-strong);
-    border-style: dashed;
-  }
+  .row.drag-over { box-shadow: inset 0 -2px 0 var(--accent); }
 
-  .nav-pill {
+  .bar {
     position: absolute;
     left: 0;
     top: 4px;
     bottom: 4px;
     width: 3px;
-    border-radius: 0 2px 2px 0;
     background: var(--accent);
     transform: scaleY(0);
-    transform-origin: center;
     transition: transform 0.2s cubic-bezier(0.34, 1.4, 0.64, 1);
   }
 
-  .list-item.selected .nav-pill {
-    transform: scaleY(1);
-  }
+  .row.selected .bar { transform: scaleY(1); }
 
-  .list-name {
+  .name {
     flex: 1;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
-  .del-btn {
-    background: none;
-    border: none;
-    cursor: pointer;
-    color: var(--text-muted);
-    font-size: 1rem;
+  .del {
+    font-size: 18px;
+    line-height: 1;
+    color: var(--ink-faint);
     opacity: 0;
     padding: 0 2px;
-    line-height: 1;
     flex-shrink: 0;
+    transition: opacity 0.14s ease, color 0.14s ease;
   }
 
-  .del-btn:hover { color: var(--danger); }
+  .del:hover { color: var(--accent); }
 
-  .edit-input {
+  @media (hover: none) {
+    .del { opacity: 0.5; }
+  }
+
+  .edit {
     flex: 1;
-    border: 1px solid var(--border-strong);
-    border-radius: 3px;
-    padding: 1px 5px;
-    font-size: 0.88rem;
+    height: 24px;
+    border: none;
+    border-bottom: 1px solid var(--accent);
+    background: none;
     outline: none;
+    font-size: 15px;
+  }
+
+  .foot {
+    flex-shrink: 0;
+    margin-top: var(--lh);
+    padding-top: var(--bl);
+    border-top: 1px solid var(--ink);
+  }
+
+  .foot-row {
+    display: flex;
+    gap: 16px;
+    margin-top: var(--bl);
+  }
+
+  .action {
+    font-family: var(--mono);
+    font-size: 11px;
+    line-height: var(--lh);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--ink-mid);
+    transition: color 0.14s ease;
+  }
+
+  .action:hover { color: var(--accent); }
+
+  /* ===================================================================
+     MOBILE — the sidebar is a drawer over the content, never a column
+     that squeezes it.
+     =================================================================== */
+  @media (max-width: 640px) {
+    .sidebar {
+      position: fixed;
+      z-index: 80;
+      top: 0;
+      left: 0;
+      bottom: 0;
+      width: min(300px, 84vw);
+      min-width: 0;
+      padding: var(--lh) 20px calc(var(--lh) + env(safe-area-inset-bottom, 0px));
+      box-shadow: 1px 0 0 var(--ink);
+      animation: drawerIn 0.24s cubic-bezier(0.34, 1.1, 0.64, 1) both;
+      opacity: 1;
+    }
+
+    /* the drawer must open even before the shell finished its load animation */
+    .sidebar.loaded { animation: drawerIn 0.24s cubic-bezier(0.34, 1.1, 0.64, 1) both; }
+
+    @keyframes drawerIn {
+      from { opacity: 0; transform: translateX(-100%); }
+      to   { opacity: 1; transform: translateX(0); }
+    }
   }
 </style>

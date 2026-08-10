@@ -71,17 +71,19 @@
 <div class="overlay" role="dialog" aria-modal="true">
   <div class="card">
     <div class="card-header">
-      <h1>Paramètres</h1>
+      <p class="kicker accent">Réglages</p>
       <button class="close-btn" onclick={onClose} aria-label="Fermer">×</button>
     </div>
+    <div class="rule ink"></div>
+
+    <h1 class="display">Serveur</h1>
 
     <section>
-      <h2>Serveur</h2>
-
       {#if isTauri}
-        <div class="field">
-          <label for="url">URL du serveur</label>
+        <div class="row">
+          <label class="kicker" for="url">URL du serveur</label>
           <input
+            class="field"
             id="url"
             type="url"
             bind:value={url}
@@ -93,9 +95,10 @@
         </div>
       {/if}
 
-      <div class="field">
-        <label for="token">Token d'accès</label>
+      <div class="row">
+        <label class="kicker" for="token">Token d'accès</label>
         <input
+          class="field"
           id="token"
           type="password"
           bind:value={token}
@@ -113,11 +116,11 @@
 
       <div class="actions">
         <button
-          class="btn secondary"
+          class="btn"
           onclick={handleTest}
           disabled={testStatus === 'testing' || (isTauri ? (!url || !token) : !token)}
         >
-          {testStatus === 'testing' ? 'Test en cours…' : 'Tester'}
+          {testStatus === 'testing' ? 'Test…' : 'Tester'}
         </button>
         <button
           class="btn primary"
@@ -131,14 +134,15 @@
 
     {#if isTauri}
       <section class="sync-section">
-        <h2>Synchronisation</h2>
+        <div class="rule"></div>
+        <p class="kicker">Synchronisation</p>
         <div class="sync-row">
           <button
-            class="btn secondary"
+            class="btn"
             onclick={handleSync}
             disabled={syncStatus === 'syncing'}
           >
-            {syncStatus === 'syncing' ? 'Sync en cours…' : 'Forcer la sync'}
+            {syncStatus === 'syncing' ? 'Sync…' : 'Forcer la sync'}
           </button>
           {#if syncStatus === 'ok'}
             <span class="sync-status ok">Sync réussie</span>
@@ -155,138 +159,90 @@
   .overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.3);
+    background: rgba(17, 19, 21, 0.32);
     display: flex;
     align-items: center;
     justify-content: center;
+    padding: var(--lh) var(--margin);
     z-index: 100;
+    overflow-y: auto;
   }
 
   .card {
-    background: #fff;
-    border: 1px solid #e0e0e0;
-    border-radius: 8px;
-    padding: 1.75rem 2rem;
+    background: var(--paper);
+    border: 1px solid var(--ink);
+    padding: var(--lh) 32px calc(var(--lh) + env(safe-area-inset-bottom, 0px));
     width: 100%;
-    max-width: 400px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+    max-width: 456px;
   }
 
   .card-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 1.25rem;
+    height: var(--lh);
   }
 
-  h1 {
-    margin: 0;
-    font-size: 1.15rem;
-    font-weight: 600;
-    color: #111;
-  }
-
-  h2 {
-    margin: 0 0 0.75rem;
-    font-size: 0.8rem;
-    font-weight: 600;
-    color: #888;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
+  .display {
+    font-size: 40px;
+    line-height: 48px;               /* 6 baselines */
+    font-weight: 800;
+    letter-spacing: -0.035em;
+    margin-bottom: var(--lh);
   }
 
   .close-btn {
-    background: none;
-    border: none;
-    font-size: 1.3rem;
-    color: #aaa;
-    cursor: pointer;
-    padding: 0 2px;
-    line-height: 1;
+    font-size: 24px;
+    line-height: var(--lh);
+    color: var(--ink-mid);
   }
 
-  .close-btn:hover { color: #333; }
+  .close-btn:hover { color: var(--accent); }
 
-  section {
-    border-top: 1px solid #eee;
-    padding-top: 1.25rem;
-    margin-top: 0;
-  }
+  .sync-section { margin-top: var(--lh); }
 
-  .sync-section {
-    margin-top: 1.25rem;
-  }
-
-  .field {
+  .row {
     display: flex;
     flex-direction: column;
-    gap: 0.35rem;
-    margin-bottom: 0.85rem;
+    gap: var(--bl);
+    margin-bottom: var(--lh);
   }
-
-  label {
-    font-size: 0.8rem;
-    font-weight: 500;
-    color: #444;
-  }
-
-  input {
-    padding: 0.5rem 0.65rem;
-    border: 1px solid #d0d0d0;
-    border-radius: 5px;
-    font-size: 0.9rem;
-    color: #111;
-    background: #fff;
-    outline: none;
-    transition: border-color 0.15s;
-  }
-
-  input:focus { border-color: #555; }
 
   .status {
-    font-size: 0.82rem;
-    margin: 0.25rem 0 0.75rem;
-    padding: 0.4rem 0.65rem;
-    border-radius: 4px;
+    font-family: var(--mono);
+    font-size: 11px;
+    line-height: var(--lh);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    padding-left: 10px;
+    margin-bottom: var(--lh);
   }
 
-  .status.ok  { background: #f0faf0; color: #2a7a2a; border: 1px solid #b8e0b8; }
-  .status.error { background: #fff5f5; color: #a00; border: 1px solid #f0c0c0; }
+  .status.ok    { color: var(--ink); border-left: 2px solid var(--ink); }
+  .status.error { color: var(--accent); border-left: 2px solid var(--accent); }
 
   .actions {
     display: flex;
-    gap: 0.65rem;
-    justify-content: flex-end;
+    gap: var(--bl);
   }
+
+  .actions .btn { flex: 1; }
 
   .sync-row {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    gap: var(--lh);
+    margin-top: var(--bl);
   }
 
   .sync-status {
-    font-size: 0.82rem;
+    font-family: var(--mono);
+    font-size: 11px;
+    line-height: var(--lh);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
   }
 
-  .sync-status.ok    { color: #2a7a2a; }
-  .sync-status.error { color: #a00; }
-
-  .btn {
-    padding: 0.5rem 1rem;
-    border-radius: 5px;
-    font-size: 0.875rem;
-    font-weight: 500;
-    cursor: pointer;
-    border: none;
-    transition: background 0.15s, opacity 0.15s;
-  }
-
-  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
-
-  .btn.secondary { background: #eee; color: #333; }
-  .btn.secondary:hover:not(:disabled) { background: #e0e0e0; }
-
-  .btn.primary { background: #222; color: #fff; }
-  .btn.primary:hover:not(:disabled) { background: #111; }
+  .sync-status.ok    { color: var(--ink-mid); }
+  .sync-status.error { color: var(--accent); }
 </style>
