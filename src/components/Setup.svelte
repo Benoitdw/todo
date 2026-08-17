@@ -7,9 +7,6 @@
 
   let { onComplete }: Props = $props();
 
-  const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
-
-  let url = $state('http://');
   let token = $state('');
   let testStatus = $state<'idle' | 'testing' | 'ok' | 'error'>('idle');
   let testError = $state('');
@@ -19,7 +16,7 @@
     testStatus = 'testing';
     testError = '';
     try {
-      await api.testConnection(isTauri ? url : '', token);
+      await api.testConnection(token);
       testStatus = 'ok';
     } catch (e) {
       testStatus = 'error';
@@ -30,10 +27,7 @@
   async function handleContinue() {
     saving = true;
     try {
-      await api.saveConfig(isTauri ? url : '', token);
-      api.triggerSync().catch(() => {
-        // Ignore — might be temporarily offline
-      });
+      await api.saveConfig(token);
       onComplete();
     } catch (e) {
       testStatus = 'error';
@@ -41,10 +35,6 @@
     } finally {
       saving = false;
     }
-  }
-
-  function onUrlInput() {
-    if (testStatus !== 'idle') testStatus = 'idle';
   }
 
   function onTokenInput() {
@@ -59,27 +49,7 @@
 
     <h1 class="display">Serveur</h1>
 
-    {#if isTauri}
-      <p class="body lede">Connecte l'application à ton serveur NAS pour activer la synchronisation.</p>
-    {:else}
-      <p class="body lede">Entre ton token d'accès pour te connecter.</p>
-    {/if}
-
-    {#if isTauri}
-      <div class="row">
-        <label class="kicker" for="url">URL du serveur</label>
-        <input
-          class="field"
-          id="url"
-          type="url"
-          bind:value={url}
-          oninput={onUrlInput}
-          placeholder="http://192.168.1.100:8080"
-          autocomplete="off"
-          spellcheck="false"
-        />
-      </div>
-    {/if}
+    <p class="body lede">Entre ton token d'accès pour te connecter.</p>
 
     <div class="row">
       <label class="kicker" for="token">Token d'accès</label>
@@ -104,7 +74,7 @@
       <button
         class="btn"
         onclick={handleTest}
-        disabled={testStatus === 'testing' || (isTauri ? (!url || !token) : !token)}
+        disabled={testStatus === 'testing' || !token}
       >
         {testStatus === 'testing' ? 'Test…' : 'Tester'}
       </button>

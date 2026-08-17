@@ -8,5 +8,7 @@ services:
     environment:
       - BEARER_TOKEN=change-me
     volumes:
-      - ./data:/data
+      # :z relabels the mount for SELinux (Fedora/RHEL) — without it the
+      # container is denied access to ./data and SQLite fails to open the db.
+      - ./data:/data:z
     restart: unless-stopped

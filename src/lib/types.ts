@@ -13,6 +13,5 @@ export interface Item {
 }
 
 export interface Config {
-  server_url: string;
   token: string;
 }

@@ -1,7 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
 import type { List, Item, Config } from './types';
-
-const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
 function getToken(): string {
   return localStorage.getItem('api_token') ?? '';
@@ -18,66 +15,59 @@ async function http<T>(method: string, path: string, body?: unknown): Promise<T>
   });
   if (!resp.ok) throw new Error(`${resp.status}`);
   const text = await resp.text();
-  return text ? JSON.parse(text) : (undefined as T);
+  if (!text) return undefined as T;
+  const type = resp.headers.get('Content-Type') ?? '';
+  // A non-JSON 200 means the request never reached the API (dev server SPA
+  // fallback, misconfigured proxy) — say so instead of dying in JSON.parse.
+  if (!type.includes('application/json')) {
+    throw new Error(`Réponse non-JSON depuis /api${path} (${type || 'type inconnu'})`);
+  }
+  return JSON.parse(text);
 }
 
 export const api = {
-  getLists: () => isTauri
-    ? invoke<List[]>('get_lists')
-    : http<List[]>('GET', '/lists'),
+  getLists: () => http<List[]>('GET', '/lists'),
 
-  createList: (title: string, pos: number) => isTauri
-    ? invoke<List>('create_list', { title, pos })
-    : http<List>('POST', '/lists', { title, pos }),
+  createList: (title: string, pos: number) =>
+    http<List>('POST', '/lists', { title, pos }),
 
-  updateList: (id: string, title: string) => isTauri
-    ? invoke<void>('update_list', { id, title })
-    : http<void>('PUT', `/lists/${id}`, { title }),
+  updateList: (id: string, title: string) =>
+    http<void>('PUT', `/lists/${id}`, { title }),
 
-  deleteList: (id: string) => isTauri
-    ? invoke<void>('delete_list', { id })
-    : http<void>('DELETE', `/lists/${id}`),
+  deleteList: (id: string) => http<void>('DELETE', `/lists/${id}`),
 
-  reorderList: (id: string, pos: number) => isTauri
-    ? invoke<void>('reorder_list', { id, pos })
-    : http<void>('PUT', `/lists/${id}`, { pos }),
+  reorderList: (id: string, pos: number) =>
+    http<void>('PUT', `/lists/${id}`, { pos }),
 
-  getItems: (listId: string) => isTauri
-    ? invoke<Item[]>('get_items', { listId })
-    : http<Item[]>('GET', `/lists/${listId}/items`),
+  getItems: (listId: string) => http<Item[]>('GET', `/lists/${listId}/items`),
 
-  createItem: (listId: string, text: string, pos: number) => isTauri
-    ? invoke<Item>('create_item', { listId, text, pos })
-    : http<Item>('POST', '/items', { list_id: listId, text, pos }),
+  createItem: (listId: string, text: string, pos: number) =>
+    http<Item>('POST', '/items', { list_id: listId, text, pos }),
 
-  updateItem: (id: string, text: string, checked: boolean) => isTauri
-    ? invoke<void>('update_item', { id, text, checked })
-    : http<void>('PUT', `/items/${id}`, { text, checked }),
+  updateItem: (id: string, text: string, checked: boolean) =>
+    http<void>('PUT', `/items/${id}`, { text, checked }),
 
-  deleteItem: (id: string) => isTauri
-    ? invoke<void>('delete_item', { id })
-    : http<void>('DELETE', `/items/${id}`),
+  deleteItem: (id: string) => http<void>('DELETE', `/items/${id}`),
 
-  reorderItem: (id: string, pos: number) => isTauri
-    ? invoke<void>('reorder_item', { id, pos })
-    : http<void>('PUT', `/items/${id}`, { pos }),
+  reorderItem: (id: string, pos: number) =>
+    http<void>('PUT', `/items/${id}`, { pos }),
 
-  // Config — web mode uses localStorage, Tauri uses invoke
-  getConfig: () => isTauri
-    ? invoke<Config | null>('get_config')
-    : Promise.resolve(localStorage.getItem('api_token') ? { server_url: '', token: localStorage.getItem('api_token')! } as Config : null),
+  // Config lives in localStorage — the server is the single source of truth
+  // for data, so the only thing we persist locally is the access token.
+  getConfig: (): Promise<Config | null> => {
+    const token = localStorage.getItem('api_token');
+    return Promise.resolve(token ? { token } : null);
+  },
 
-  saveConfig: (serverUrl: string, token: string) => isTauri
-    ? invoke<void>('save_config', { serverUrl, token })
-    : (localStorage.setItem('api_token', token), Promise.resolve()),
+  saveConfig: (token: string): Promise<void> => {
+    localStorage.setItem('api_token', token);
+    return Promise.resolve();
+  },
 
-  testConnection: (serverUrl: string, token: string) => isTauri
-    ? invoke<void>('test_connection', { serverUrl, token })
-    : fetch('/health', { headers: { Authorization: `Bearer ${token}` } }).then(r => { if (!r.ok) throw new Error('Connexion échouée'); }),
-
-  triggerSync: () => isTauri
-    ? invoke<void>('trigger_sync')
-    : Promise.resolve(),
+  testConnection: (token: string): Promise<void> =>
+    fetch('/health', { headers: { Authorization: `Bearer ${token}` } }).then(r => {
+      if (!r.ok) throw new Error('Connexion échouée');
+    }),
 
   connectEvents: (onInvalidate: () => void): (() => void) => {
     let closed = false;

@@ -7,8 +7,6 @@
   import { api } from './lib/api';
   import type { List } from './lib/types';
 
-  const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
-
   let lists = $state<List[]>([]);
   let selectedId = $state<string | null>(null);
   let hasConfig = $state<boolean | null>(null);
@@ -38,18 +36,18 @@
     const result = await api.getConfig();
     hasConfig = result !== null;
     if (hasConfig) {
-      await loadLists();
+      // Never let a failed load leave the shell invisible — the app fades in on
+      // `loaded`, so throwing here used to render a blank page with no clue why.
+      try {
+        await loadLists();
+      } catch {
+        showError('Serveur injoignable');
+      }
     }
     setTimeout(() => { loaded = true; }, 60);
 
     let unlisten: (() => void) | undefined;
-    if (isTauri) {
-      const { listen } = await import('@tauri-apps/api/event');
-      unlisten = await listen('sync:completed', async () => {
-        lists = await api.getLists();
-        syncKey++;
-      });
-    } else if (hasConfig) {
+    if (hasConfig) {
       unlisten = api.connectEvents(async () => {
         lists = await api.getLists();
         syncKey++;

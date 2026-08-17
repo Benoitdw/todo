@@ -8,20 +8,14 @@
 
   let { onClose }: Props = $props();
 
-  const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
-
-  let url = $state('');
   let token = $state('');
   let testStatus = $state<'idle' | 'testing' | 'ok' | 'error'>('idle');
   let testError = $state('');
   let saving = $state(false);
-  let syncStatus = $state<'idle' | 'syncing' | 'ok' | 'error'>('idle');
-  let syncError = $state('');
 
   onMount(async () => {
     const cfg = await api.getConfig();
     if (cfg) {
-      url = cfg.server_url;
       token = cfg.token;
     }
   });
@@ -34,7 +28,7 @@
     testStatus = 'testing';
     testError = '';
     try {
-      await api.testConnection(isTauri ? url : '', token);
+      await api.testConnection(token);
       testStatus = 'ok';
     } catch (e) {
       testStatus = 'error';
@@ -45,25 +39,13 @@
   async function handleSave() {
     saving = true;
     try {
-      await api.saveConfig(isTauri ? url : '', token);
+      await api.saveConfig(token);
       onClose();
     } catch {
       testStatus = 'error';
       testError = 'Erreur lors de la sauvegarde';
     } finally {
       saving = false;
-    }
-  }
-
-  async function handleSync() {
-    syncStatus = 'syncing';
-    syncError = '';
-    try {
-      await api.triggerSync();
-      syncStatus = 'ok';
-    } catch (e) {
-      syncStatus = 'error';
-      syncError = typeof e === 'string' ? e : (e as Error)?.message ?? 'Erreur inconnue';
     }
   }
 </script>
@@ -79,22 +61,6 @@
     <h1 class="display">Serveur</h1>
 
     <section>
-      {#if isTauri}
-        <div class="row">
-          <label class="kicker" for="url">URL du serveur</label>
-          <input
-            class="field"
-            id="url"
-            type="url"
-            bind:value={url}
-            oninput={onFieldInput}
-            placeholder="http://192.168.1.100:8080"
-            autocomplete="off"
-            spellcheck="false"
-          />
-        </div>
-      {/if}
-
       <div class="row">
         <label class="kicker" for="token">Token d'accès</label>
         <input
@@ -118,7 +84,7 @@
         <button
           class="btn"
           onclick={handleTest}
-          disabled={testStatus === 'testing' || (isTauri ? (!url || !token) : !token)}
+          disabled={testStatus === 'testing' || !token}
         >
           {testStatus === 'testing' ? 'Test…' : 'Tester'}
         </button>
@@ -131,27 +97,6 @@
         </button>
       </div>
     </section>
-
-    {#if isTauri}
-      <section class="sync-section">
-        <div class="rule"></div>
-        <p class="kicker">Synchronisation</p>
-        <div class="sync-row">
-          <button
-            class="btn"
-            onclick={handleSync}
-            disabled={syncStatus === 'syncing'}
-          >
-            {syncStatus === 'syncing' ? 'Sync…' : 'Forcer la sync'}
-          </button>
-          {#if syncStatus === 'ok'}
-            <span class="sync-status ok">Sync réussie</span>
-          {:else if syncStatus === 'error'}
-            <span class="sync-status error" title={syncError}>Échec — {syncError}</span>
-          {/if}
-        </div>
-      </section>
-    {/if}
   </div>
 </div>
 
@@ -199,8 +144,6 @@
 
   .close-btn:hover { color: var(--accent); }
 
-  .sync-section { margin-top: var(--lh); }
-
   .row {
     display: flex;
     flex-direction: column;
@@ -227,22 +170,4 @@
   }
 
   .actions .btn { flex: 1; }
-
-  .sync-row {
-    display: flex;
-    align-items: center;
-    gap: var(--lh);
-    margin-top: var(--bl);
-  }
-
-  .sync-status {
-    font-family: var(--mono);
-    font-size: 11px;
-    line-height: var(--lh);
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
-  }
-
-  .sync-status.ok    { color: var(--ink-mid); }
-  .sync-status.error { color: var(--accent); }
 </style>
