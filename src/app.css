@@ -288,3 +288,45 @@ button {
 .btn.accent:hover:not(:disabled) { background: var(--ink); border-color: var(--ink); }
 
 .btn:disabled { opacity: 0.32; cursor: not-allowed; }
+
+/* ===========================================================================
+   LINKS — the [[ ]] tokens, rendered. Global because the same chip appears in
+   an island body and in a todo item, two component scopes.
+   =========================================================================== */
+
+.ref-chip {
+  display: inline;
+  padding: 0 2px;
+  border-bottom: 1px solid var(--accent);
+  color: var(--accent);
+  cursor: pointer;
+  transition: background 0.14s ease, color 0.14s ease;
+}
+
+.ref-chip:hover { background: var(--accent); color: var(--paper); }
+
+.ref-chip .ref-kind {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  vertical-align: 1px;
+  margin-right: 4px;
+  opacity: 0.7;
+}
+
+.ref-chip.dead {
+  border-bottom-style: dotted;
+  color: var(--ink-faint);
+  cursor: not-allowed;
+}
+
+.ref-chip.dead:hover { background: none; color: var(--ink-faint); }
+
+/* the row a link just jumped to, flashed so the eye finds it */
+.link-target { animation: linkTarget 1.6s ease-out both; }
+
+@keyframes linkTarget {
+  0%, 40% { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+  100%    { background: transparent; }
+}

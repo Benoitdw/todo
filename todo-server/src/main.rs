@@ -5,6 +5,7 @@ mod routes;
 
 use auth::require_auth;
 use axum::{
+    http::StatusCode,
     middleware,
     routing::{get, post, put},
     Router,
@@ -17,7 +18,7 @@ use std::{
 };
 use tokio::sync::broadcast;
 use tower_http::cors::{Any, CorsLayer};
-use tower_http::services::ServeDir;
+use tower_http::services::{ServeDir, ServeFile};
 use tower_http::trace::TraceLayer;
 
 #[derive(Clone)]
@@ -62,7 +63,23 @@ async fn main() {
         .route(
             "/items/:id",
             put(routes::update_item).delete(routes::delete_item),
-        );
+        )
+        .route("/notes", get(routes::get_notes).post(routes::create_note))
+        .route(
+            "/notes/:id",
+            put(routes::update_note).delete(routes::delete_note),
+        )
+        .route("/notes/:id/islands", get(routes::get_islands))
+        .route("/islands", post(routes::create_island))
+        .route(
+            "/islands/:id",
+            put(routes::update_island).delete(routes::delete_island),
+        )
+        .route("/refs", get(routes::get_refs))
+        .route("/backlinks", get(routes::get_backlinks))
+        // Without this, an unmatched /api/* path falls through to the outer
+        // fallback and would answer index.html with a 200 instead of a 404.
+        .fallback(|| async { StatusCode::NOT_FOUND });
 
     let app = Router::new()
         .route("/health", get(routes::health))
@@ -72,7 +89,17 @@ async fn main() {
         .layer(middleware::from_fn(require_auth))
         .layer(cors)
         .layer(TraceLayer::new_for_http())
-        .fallback_service(ServeDir::new(static_dir).append_index_html_on_directories(true))
+        // SPA fallback: /notes and /notes/:id are client-side routes with no file
+        // behind them, so an unknown path serves index.html instead of a 404.
+        .fallback_service(
+            ServeDir::new(&static_dir)
+                .append_index_html_on_directories(true)
+                // `fallback`, not `not_found_service`: the latter would serve
+                // index.html but force the status to 404.
+                .fallback(ServeFile::new(
+                    PathBuf::from(&static_dir).join("index.html"),
+                )),
+        )
         .with_state(state);
 
     let port: u16 = std::env::var("PORT")

@@ -1,7 +1,10 @@
 <script lang="ts">
   import { api } from '../lib/api';
   import { optical } from '../lib/optical';
-  import type { Item, List } from '../lib/types';
+  import LinkPicker from './LinkPicker.svelte';
+  import RefText from './RefText.svelte';
+  import { refStore, makeToken } from '../lib/refs.svelte';
+  import type { Item, List, Ref } from '../lib/types';
 
   let { list, isMobile = false, syncKey = 0, loaded = false, navKey = 0, onOpenSidebar }: {
     list: List;
@@ -101,7 +104,52 @@
     errorTimer = setTimeout(() => errorMsg = null, 3000);
   }
 
+  // Link palette on the composer: "[[" opens it, exactly as in an island body.
+  let picker = $state<{ start: number } | null>(null);
+  let pickerRef = $state<LinkPicker | null>(null);
+  let composerEl = $state<HTMLInputElement | null>(null);
+  let caret = $state(0);
+  const pickerQuery = $derived(picker ? newItemText.slice(picker.start, caret) : '');
+
+  function syncCaret() {
+    if (!composerEl) return;
+    caret = composerEl.selectionStart ?? 0;
+    if (picker && caret < picker.start) picker = null;
+  }
+
+  function onComposerInput() {
+    syncCaret();
+    if (!picker && newItemText.slice(0, caret).endsWith('[[')) {
+      picker = { start: caret };
+      refStore.load();
+    }
+  }
+
+  function insertRef(ref: Ref) {
+    if (!picker) return;
+    const before = newItemText.slice(0, picker.start - 2);   // drop the "[["
+    const after = newItemText.slice(caret);
+    const token = makeToken(ref.kind, ref.id);
+    newItemText = before + token + after;
+    picker = null;
+    const pos = (before + token).length;
+    requestAnimationFrame(() => {
+      composerEl?.focus();
+      composerEl?.setSelectionRange(pos, pos);
+      caret = pos;
+    });
+  }
+
+  function onComposerKeydown(e: KeyboardEvent) {
+    if (picker && pickerRef?.handleKey(e)) {
+      e.preventDefault();
+      return;
+    }
+    if (e.key === 'Enter') addItem();
+  }
+
   async function addItem() {
+    picker = null;
     const text = newItemText.trim();
     if (!text) return;
     const pos = items.length > 0 ? items[items.length - 1].pos + 1000 : 1000;
@@ -306,6 +354,7 @@
           {#each visible as item, i (item.id)}
             {#key syncedIds.has(item.id) ? item.id + syncKey : item.id}
               <li
+                id="item-{item.id}"
                 class="band item"
                 class:drag-over={dragOverId === item.id}
                 class:synced={syncedIds.has(item.id)}
@@ -355,7 +404,7 @@
                     tabindex="0"
                     ondblclick={() => startEdit(item)}
                     onkeydown={(e) => e.key === 'Enter' && startEdit(item)}
-                  ><span class="t" class:struck={item.checked}>{item.text}</span></span>
+                  ><span class="t" class:struck={item.checked}><RefText text={item.text} /></span></span>
                 {/if}
 
                 <button
@@ -387,14 +436,30 @@
     <div class="composer">
       <div class="grid">
         <div class="band">
-          <input
-            class="field new-item"
-            type="text"
-            placeholder="Nouvel item…"
-            enterkeyhint="done"
-            bind:value={newItemText}
-            onkeydown={(e) => e.key === 'Enter' && addItem()}
-          />
+          <div class="new-item-wrap">
+            <input
+              class="field new-item"
+              type="text"
+              placeholder="Nouvel item…"
+              enterkeyhint="done"
+              bind:this={composerEl}
+              bind:value={newItemText}
+              oninput={onComposerInput}
+              onclick={syncCaret}
+              onkeyup={syncCaret}
+              onblur={() => picker = null}
+              onkeydown={onComposerKeydown}
+            />
+            {#if picker}
+              <LinkPicker
+                bind:this={pickerRef}
+                query={pickerQuery}
+                placement="above"
+                onPick={insertRef}
+                onCancel={() => picker = null}
+              />
+            {/if}
+          </div>
           <button class="btn accent add" onclick={addItem} aria-label="Ajouter">
             <span class="add-long">Ajouter</span>
             <span class="add-short">+</span>
@@ -659,7 +724,8 @@
     background: var(--paper);
   }
 
-  .new-item { grid-column: 1 / 11; }
+  .new-item-wrap { grid-column: 1 / 11; position: relative; }
+  .new-item { width: 100%; }
   .add { grid-column: 11 / 13; width: 100%; }
 
   .add-short { display: none; }
@@ -699,7 +765,7 @@
     .item-edit { grid-column: 3 / 11; }
     .del-item { grid-column: 11 / 13; }
 
-    .new-item { grid-column: 1 / 10; }
+    .new-item-wrap { grid-column: 1 / 10; }
     .add { grid-column: 10 / 13; }
 
     .add-long { display: none; }

@@ -1,11 +1,13 @@
 <script lang="ts">
-  import type { List } from '../lib/types';
+  import type { Mode, SidebarEntry } from '../lib/types';
 
   let {
-    lists,
+    mode,
+    entries,
     selectedId,
     loaded,
     isMobile = false,
+    onSelectMode,
     onSelect,
     onCreate,
     onDelete,
@@ -14,18 +16,33 @@
     onOpenSettings,
     onClose,
   }: {
-    lists: List[];
+    mode: Mode;
+    entries: SidebarEntry[];
     selectedId: string | null;
     loaded: boolean;
     isMobile?: boolean;
+    onSelectMode: (mode: Mode) => void;
     onSelect: (id: string) => void;
     onCreate: (title: string) => Promise<void>;
     onDelete: (id: string) => Promise<void>;
     onRename: (id: string, title: string) => Promise<void>;
-    onReorder: (reordered: List[]) => Promise<void>;
+    onReorder: (reordered: SidebarEntry[]) => Promise<void>;
     onOpenSettings: () => void;
     onClose?: () => void;
   } = $props();
+
+  // The mode selector is revealed by clicking the kicker, so the sidebar head
+  // looks exactly as it did before until the user asks for the second mode.
+  let modeOpen = $state(false);
+
+  const label = $derived(mode === 'lists' ? 'Listes' : 'Notes');
+  const createLabel = $derived(mode === 'lists' ? 'Nouvelle liste' : 'Nouvelle note');
+  const newPlaceholder = $derived(mode === 'lists' ? 'Nom de la liste' : 'Nom de la note');
+
+  function pickMode(next: Mode) {
+    modeOpen = false;
+    if (next !== mode) onSelectMode(next);
+  }
 
   let search = $state('');
   let addingList = $state(false);
@@ -37,8 +54,8 @@
 
   const filtered = $derived(
     search.trim()
-      ? lists.filter(l => l.title.toLowerCase().includes(search.toLowerCase()))
-      : lists
+      ? entries.filter(l => l.title.toLowerCase().includes(search.toLowerCase()))
+      : entries
   );
 
   async function handleCreate() {
@@ -48,9 +65,9 @@
     if (t) await onCreate(t);
   }
 
-  function startEdit(list: List) {
-    editingId = list.id;
-    editTitle = list.title;
+  function startEdit(entry: SidebarEntry) {
+    editingId = entry.id;
+    editTitle = entry.title;
   }
 
   async function commitEdit() {
@@ -77,9 +94,9 @@
       dragOverId = null;
       return;
     }
-    const from = lists.findIndex(l => l.id === draggedId);
-    const to = lists.findIndex(l => l.id === targetId);
-    const reordered = [...lists];
+    const from = entries.findIndex(l => l.id === draggedId);
+    const to = entries.findIndex(l => l.id === targetId);
+    const reordered = [...entries];
     const [moved] = reordered.splice(from, 1);
     reordered.splice(to, 0, moved);
     draggedId = null;
@@ -101,8 +118,27 @@
 
 <aside class="sidebar" class:loaded>
   <div class="head">
-    <p class="kicker">Listes</p>
-    <span class="folio count">{String(lists.length).padStart(2, '0')}</span>
+    {#if modeOpen}
+      <div class="modes">
+        <button
+          class="kicker mode-opt"
+          class:active={mode === 'lists'}
+          onclick={() => pickMode('lists')}
+        >Listes</button>
+        <button
+          class="kicker mode-opt"
+          class:active={mode === 'notes'}
+          onclick={() => pickMode('notes')}
+        >Notes</button>
+      </div>
+    {:else}
+      <button
+        class="kicker mode-toggle"
+        aria-expanded="false"
+        onclick={() => modeOpen = true}
+      >{label}</button>
+    {/if}
+    <span class="folio count">{String(entries.length).padStart(2, '0')}</span>
     {#if isMobile}
       <button class="close" onclick={onClose} aria-label="Fermer">×</button>
     {/if}
@@ -120,7 +156,7 @@
       class="search new"
       bind:this={newInputEl}
       type="text"
-      placeholder="Nom de la liste"
+      placeholder={newPlaceholder}
       bind:value={newTitle}
       onkeydown={(e) => {
         if (e.key === 'Enter') handleCreate();
@@ -131,27 +167,27 @@
   {/if}
 
   <ul class="nav">
-    {#each filtered as list (list.id)}
+    {#each filtered as entry (entry.id)}
       <li
         class="row"
-        class:selected={selectedId === list.id}
-        class:drag-over={dragOverId === list.id}
+        class:selected={selectedId === entry.id}
+        class:drag-over={dragOverId === entry.id}
         draggable="true"
         role="button"
         tabindex="0"
-        ondragstart={(e) => handleDragStart(e, list.id)}
-        ondragover={(e) => handleDragOver(e, list.id)}
+        ondragstart={(e) => handleDragStart(e, entry.id)}
+        ondragover={(e) => handleDragOver(e, entry.id)}
         ondragleave={() => dragOverId = null}
-        ondrop={(e) => handleDrop(e, list.id)}
+        ondrop={(e) => handleDrop(e, entry.id)}
         ondragend={handleDragEnd}
-        onclick={() => onSelect(list.id)}
-        ondblclick={() => startEdit(list)}
-        onkeydown={(e) => e.key === 'Enter' && onSelect(list.id)}
+        onclick={() => onSelect(entry.id)}
+        ondblclick={() => startEdit(entry)}
+        onkeydown={(e) => e.key === 'Enter' && onSelect(entry.id)}
       >
         <!-- ② Navigation — active indicator bar -->
         <span class="bar"></span>
 
-        {#if editingId === list.id}
+        {#if editingId === entry.id}
           <input
             class="edit"
             type="text"
@@ -163,13 +199,13 @@
             }}
           />
         {:else}
-          <span class="name">{list.title}</span>
+          <span class="name">{entry.title}</span>
           <button
             class="del"
             tabindex="-1"
             title="Supprimer"
-            onclick={(e) => { e.stopPropagation(); onDelete(list.id); }}
-            aria-label="Supprimer la liste"
+            onclick={(e) => { e.stopPropagation(); onDelete(entry.id); }}
+            aria-label={mode === 'lists' ? 'Supprimer la liste' : 'Supprimer la note'}
           >×</button>
         {/if}
       </li>
@@ -178,7 +214,7 @@
 
   <div class="foot">
     <button class="action" onclick={() => { addingList = true; newTitle = ''; }}>
-      + &nbsp;Nouvelle liste
+      + &nbsp;{createLabel}
     </button>
     <div class="foot-row">
       <button class="action" onclick={onOpenSettings}>Réglages</button>
@@ -217,6 +253,36 @@
   }
 
   .count { margin-left: auto; }
+
+  /* The toggle must render exactly like the <p class="kicker"> it replaced:
+     the global button reset drops the border and background but not padding. */
+  .mode-toggle {
+    padding: 0;
+    text-align: left;
+    transition: color 0.14s ease;
+  }
+
+  .mode-toggle:hover { color: var(--accent); }
+
+  .modes {
+    display: flex;
+    gap: 16px;
+    animation: modesIn 0.2s cubic-bezier(0.34, 1.1, 0.64, 1) both;
+  }
+
+  @keyframes modesIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .mode-opt {
+    padding: 0;
+    color: var(--ink-faint);
+    transition: color 0.14s ease;
+  }
+
+  .mode-opt:hover { color: var(--accent); }
+  .mode-opt.active { color: var(--ink); }
 
   .close {
     font-size: 22px;

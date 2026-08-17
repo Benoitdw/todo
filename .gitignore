@@ -6,6 +6,9 @@ Cargo.lock
 node_modules/
 dist/
 
+# Runtime data (SQLite database + uploaded media)
+data/
+
 # Env
 .env
 .env.*

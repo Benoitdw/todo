@@ -1,4 +1,4 @@
-import type { List, Item, Config } from './types';
+import type { List, Item, Config, Note, Island, IslandKind, Ref, RefKind } from './types';
 
 function getToken(): string {
   return localStorage.getItem('api_token') ?? '';
@@ -51,6 +51,37 @@ export const api = {
 
   reorderItem: (id: string, pos: number) =>
     http<void>('PUT', `/items/${id}`, { pos }),
+
+  getNotes: () => http<Note[]>('GET', '/notes'),
+
+  createNote: (title: string, pos: number) =>
+    http<Note>('POST', '/notes', { title, pos }),
+
+  updateNote: (id: string, title: string) =>
+    http<void>('PUT', `/notes/${id}`, { title }),
+
+  deleteNote: (id: string) => http<void>('DELETE', `/notes/${id}`),
+
+  reorderNote: (id: string, pos: number) =>
+    http<void>('PUT', `/notes/${id}`, { pos }),
+
+  getIslands: (noteId: string) => http<Island[]>('GET', `/notes/${noteId}/islands`),
+
+  createIsland: (noteId: string, kind: IslandKind, text: string, pos: number) =>
+    http<Island>('POST', '/islands', { note_id: noteId, kind, text, pos }),
+
+  updateIsland: (id: string, text: string) =>
+    http<void>('PUT', `/islands/${id}`, { text }),
+
+  deleteIsland: (id: string) => http<void>('DELETE', `/islands/${id}`),
+
+  reorderIsland: (id: string, pos: number) =>
+    http<void>('PUT', `/islands/${id}`, { pos }),
+
+  getRefs: () => http<Ref[]>('GET', '/refs'),
+
+  getBacklinks: (kind: RefKind, id: string) =>
+    http<Ref[]>('GET', `/backlinks?kind=${kind}&id=${encodeURIComponent(id)}`),
 
   // Config lives in localStorage — the server is the single source of truth
   // for data, so the only thing we persist locally is the access token.
