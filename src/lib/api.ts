@@ -78,6 +78,46 @@ export const api = {
   reorderIsland: (id: string, pos: number) =>
     http<void>('PUT', `/islands/${id}`, { pos }),
 
+  /**
+   * The URL an <img>/<video>/<audio> can load. Those tags send no Authorization
+   * header, so the token rides in the query string — the same mechanism the SSE
+   * endpoint already uses.
+   */
+  islandMediaUrl: (id: string) =>
+    `/api/islands/${id}/media?token=${encodeURIComponent(getToken())}`,
+
+  /**
+   * Uploads one binary. XMLHttpRequest rather than fetch, which exposes no
+   * upload progress — the only place in this file that does not go through http().
+   */
+  uploadIslandMedia: (
+    id: string,
+    blob: Blob,
+    mime: string,
+    onProgress?: (ratio: number) => void,
+  ): Promise<Island> =>
+    new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('PUT', `/api/islands/${id}/media`);
+      xhr.setRequestHeader('Authorization', `Bearer ${getToken()}`);
+      xhr.setRequestHeader('Content-Type', mime);
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable && onProgress) onProgress(e.loaded / e.total);
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try { resolve(JSON.parse(xhr.responseText)); }
+          catch { reject(new Error('Réponse invalide du serveur')); }
+        } else if (xhr.status === 413) {
+          reject(new Error('Fichier trop volumineux'));
+        } else {
+          reject(new Error(`${xhr.status}`));
+        }
+      };
+      xhr.onerror = () => reject(new Error('Envoi interrompu'));
+      xhr.send(blob);
+    }),
+
   getRefs: () => http<Ref[]>('GET', '/refs'),
 
   getBacklinks: (kind: RefKind, id: string) =>

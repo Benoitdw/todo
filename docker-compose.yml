@@ -5,6 +5,11 @@ services:
       - "8080:8080"
     environment:
       - BEARER_TOKEN=change-me
+      # Upload ceilings in MB. Keep the largest in step with the reverse proxy's
+      # client_max_body_size, or the 413 comes from the proxy with no trace here.
+      - MAX_PHOTO_MB=15
+      - MAX_AUDIO_MB=25
+      - MAX_VIDEO_MB=200
     volumes:
       # :z relabels the mounts for SELinux (Fedora/RHEL) — without it the
       # container is denied access and SQLite fails to open the db.

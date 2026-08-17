@@ -5,6 +5,7 @@ mod routes;
 
 use auth::require_auth;
 use axum::{
+    extract::DefaultBodyLimit,
     http::StatusCode,
     middleware,
     routing::{get, post, put},
@@ -25,6 +26,8 @@ use tower_http::trace::TraceLayer;
 pub struct AppState {
     pub db: Arc<Mutex<Database>>,
     pub broadcast: broadcast::Sender<()>,
+    /// Root of the data volume; media files live under `<data_dir>/media`.
+    pub data_dir: PathBuf,
 }
 
 #[tokio::main]
@@ -40,10 +43,16 @@ async fn main() {
     let db_path = PathBuf::from(&data_dir).join("todo.db");
 
     std::fs::create_dir_all(&data_dir).expect("failed to create data directory");
+    std::fs::create_dir_all(PathBuf::from(&data_dir).join("media"))
+        .expect("failed to create media directory");
 
     let db = Database::new(&db_path).expect("failed to open database");
     let (broadcast, _) = broadcast::channel::<()>(32);
-    let state = AppState { db: Arc::new(Mutex::new(db)), broadcast };
+    let state = AppState {
+        db: Arc::new(Mutex::new(db)),
+        broadcast,
+        data_dir: PathBuf::from(&data_dir),
+    };
 
     let cors = CorsLayer::new()
         .allow_origin(Any)
@@ -74,6 +83,14 @@ async fn main() {
         .route(
             "/islands/:id",
             put(routes::update_island).delete(routes::delete_island),
+        )
+        // The media route carries its own body limit: axum's default is 2 MB,
+        // which would reject every video before the handler ever runs.
+        .route(
+            "/islands/:id/media",
+            put(routes::put_island_media)
+                .get(routes::get_island_media)
+                .layer(DefaultBodyLimit::max(routes::max_media_bytes())),
         )
         .route("/refs", get(routes::get_refs))
         .route("/backlinks", get(routes::get_backlinks))

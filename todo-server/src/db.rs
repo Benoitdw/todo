@@ -411,14 +411,14 @@ impl Database {
             .collect::<Result<_>>()?;
         drop(stmt);
 
+        // Only the outgoing links go: they were derived from texts that no
+        // longer exist. Incoming rows mirror text living elsewhere, so they stay
+        // and `get_backlinks` filters them out by joining on live sources.
         self.conn.execute(
-            "UPDATE links SET deleted_at = ?1, updated_at = ?1
-             WHERE deleted_at IS NULL AND (
-                 dst_island_id IN (SELECT id FROM islands WHERE note_id = ?2)
-                 OR (src_kind = 'island'
-                     AND src_id IN (SELECT id FROM islands WHERE note_id = ?2))
-             )",
-            params![deleted_at, id],
+            "DELETE FROM links
+             WHERE src_kind = 'island'
+               AND src_id IN (SELECT id FROM islands WHERE note_id = ?1)",
+            params![id],
         )?;
         self.conn.execute(
             "UPDATE islands SET deleted_at = ?1, updated_at = ?1 WHERE note_id = ?2 AND deleted_at IS NULL",
@@ -524,11 +524,11 @@ impl Database {
         let deleted_at = now();
         let path = self.get_island(id)?.and_then(|i| i.media_path);
 
+        // See delete_note: the island's own outgoing links are dropped, links
+        // pointing at it are left to the backlink query's liveness filter.
         self.conn.execute(
-            "UPDATE links SET deleted_at = ?1, updated_at = ?1
-             WHERE deleted_at IS NULL
-               AND (dst_island_id = ?2 OR (src_kind = 'island' AND src_id = ?2))",
-            params![deleted_at, id],
+            "DELETE FROM links WHERE src_kind = 'island' AND src_id = ?1",
+            params![id],
         )?;
         self.conn.execute(
             "UPDATE islands SET deleted_at = ?1, updated_at = ?1 WHERE id = ?2 AND deleted_at IS NULL",

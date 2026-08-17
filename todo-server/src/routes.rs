@@ -7,16 +7,21 @@ use crate::{
     AppState,
 };
 use axum::{
+    body::Body,
     extract::{Path, Query, State},
-    http::{HeaderValue, StatusCode},
+    http::{HeaderMap, HeaderValue, Request, StatusCode},
     response::{
         sse::{Event, KeepAlive, Sse},
-        IntoResponse,
+        IntoResponse, Response,
     },
     Json,
 };
+use futures_util::StreamExt as _;
 use std::{convert::Infallible, sync::{Arc, Mutex}};
-use tokio_stream::{wrappers::BroadcastStream, StreamExt as _};
+use tokio::{fs, io::AsyncWriteExt};
+use tokio_stream::wrappers::BroadcastStream;
+use tower::ServiceExt as _;
+use tower_http::services::ServeFile;
 use uuid::Uuid;
 
 pub async fn health() -> StatusCode {
@@ -107,6 +112,190 @@ fn clean_labels(mut refs: Vec<Ref>) -> Vec<Ref> {
         r.label = clean_label(&r.label);
     }
     refs
+}
+
+// --- media ------------------------------------------------------------------
+
+const DEFAULT_PHOTO_MB: usize = 15;
+const DEFAULT_AUDIO_MB: usize = 25;
+const DEFAULT_VIDEO_MB: usize = 200;
+
+fn env_mb(key: &str, default: usize) -> usize {
+    std::env::var(key)
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .filter(|v| *v > 0)
+        .unwrap_or(default)
+        * 1024
+        * 1024
+}
+
+/// Route-level ceiling, read once at startup; the per-kind limit is enforced
+/// while streaming. Overridable so the sizes can change without rebuilding the
+/// image — the value must stay in step with the proxy's client_max_body_size.
+pub fn max_media_bytes() -> usize {
+    env_mb("MAX_PHOTO_MB", DEFAULT_PHOTO_MB)
+        .max(env_mb("MAX_AUDIO_MB", DEFAULT_AUDIO_MB))
+        .max(env_mb("MAX_VIDEO_MB", DEFAULT_VIDEO_MB))
+}
+
+fn max_bytes_for(kind: &str) -> Option<usize> {
+    match kind {
+        "photo" => Some(env_mb("MAX_PHOTO_MB", DEFAULT_PHOTO_MB)),
+        "audio" => Some(env_mb("MAX_AUDIO_MB", DEFAULT_AUDIO_MB)),
+        "video" => Some(env_mb("MAX_VIDEO_MB", DEFAULT_VIDEO_MB)),
+        _ => None, // a text island carries no binary
+    }
+}
+
+fn mime_matches_kind(mime: &str, kind: &str) -> bool {
+    let base = mime.split(';').next().unwrap_or("").trim();
+    match kind {
+        "photo" => base.starts_with("image/"),
+        "audio" => base.starts_with("audio/"),
+        "video" => base.starts_with("video/"),
+        _ => false,
+    }
+}
+
+/// Cosmetic only — `media_mime` stays the source of truth for playback.
+fn ext_for_mime(mime: &str) -> &'static str {
+    match mime.split(';').next().unwrap_or("").trim() {
+        "image/jpeg" => "jpg",
+        "image/png" => "png",
+        "image/heic" | "image/heif" => "heic",
+        "image/webp" => "webp",
+        "image/gif" => "gif",
+        "video/mp4" => "mp4",
+        "video/quicktime" => "mov",
+        "video/webm" => "webm",
+        "audio/webm" => "webm",
+        "audio/mp4" | "audio/aac" | "audio/x-m4a" => "m4a",
+        "audio/mpeg" => "mp3",
+        "audio/ogg" => "ogg",
+        "audio/wav" | "audio/x-wav" => "wav",
+        _ => "bin",
+    }
+}
+
+pub async fn put_island_media(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+    body: Body,
+) -> Result<Json<Island>, StatusCode> {
+    // The lock is taken to read, then released: the upload itself must never
+    // hold the global database mutex, or a 200 MB video freezes the whole app.
+    let island = {
+        let guard = state.db.lock().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        guard.get_island(&id).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+    }
+    .ok_or(StatusCode::NOT_FOUND)?;
+
+    if island.media_path.is_some() {
+        // One island carries exactly one binary; replacing means delete + recreate.
+        return Err(StatusCode::CONFLICT);
+    }
+    let max = max_bytes_for(&island.kind).ok_or(StatusCode::UNSUPPORTED_MEDIA_TYPE)?;
+
+    let mime = headers
+        .get(axum::http::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .ok_or(StatusCode::UNSUPPORTED_MEDIA_TYPE)?
+        .to_string();
+    if !mime_matches_kind(&mime, &island.kind) {
+        return Err(StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    }
+
+    let dir = state.data_dir.join("media").join(&island.note_id);
+    fs::create_dir_all(&dir)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let part = dir.join(format!("{id}.part"));
+    let final_name = format!("{id}.{}", ext_for_mime(&mime));
+    let final_path = dir.join(&final_name);
+
+    let mut file = fs::File::create(&part)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let mut stream = body.into_data_stream();
+    let mut written: usize = 0;
+
+    while let Some(chunk) = stream.next().await {
+        let chunk = match chunk {
+            Ok(c) => c,
+            Err(_) => {
+                let _ = fs::remove_file(&part).await;
+                return Err(StatusCode::BAD_REQUEST);
+            }
+        };
+        written += chunk.len();
+        if written > max {
+            let _ = fs::remove_file(&part).await;
+            return Err(StatusCode::PAYLOAD_TOO_LARGE);
+        }
+        if file.write_all(&chunk).await.is_err() {
+            let _ = fs::remove_file(&part).await;
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+    }
+    if file.flush().await.is_err() {
+        let _ = fs::remove_file(&part).await;
+        return Err(StatusCode::INTERNAL_SERVER_ERROR);
+    }
+    drop(file);
+
+    // Renamed only once complete, so a `.part` on disk always means a failed upload.
+    fs::rename(&part, &final_path)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let rel = format!("media/{}/{}", island.note_id, final_name);
+    let guard = state.db.lock().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    guard
+        .set_island_media(&id, &rel, &mime, written as i64)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let updated = guard
+        .get_island(&id)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(StatusCode::NOT_FOUND)?;
+    let _ = state.broadcast.send(());
+    Ok(Json(updated))
+}
+
+pub async fn get_island_media(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    req: Request<Body>,
+) -> Result<Response, StatusCode> {
+    let island = {
+        let guard = state.db.lock().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        guard.get_island(&id).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+    }
+    .ok_or(StatusCode::NOT_FOUND)?;
+
+    let (Some(rel), Some(mime)) = (island.media_path, island.media_mime) else {
+        // An island with no binary yet is "nothing", not "ok" — an <img> has to
+        // be able to tell the difference.
+        return Err(StatusCode::NOT_FOUND);
+    };
+
+    // ServeFile brings Range, 206 and If-Range for free; reimplementing byte
+    // ranges by hand is a classic source of bugs.
+    let mut resp = ServeFile::new(state.data_dir.join(rel))
+        .oneshot(req)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .into_response();
+
+    if resp.status() == StatusCode::NOT_FOUND {
+        return Err(StatusCode::NOT_FOUND);
+    }
+    // The stored mime wins over anything guessed from the extension.
+    if let Ok(value) = HeaderValue::from_str(&mime) {
+        resp.headers_mut().insert(axum::http::header::CONTENT_TYPE, value);
+    }
+    Ok(resp)
 }
 
 pub async fn get_refs(State(state): State<AppState>) -> Result<Json<Vec<Ref>>, StatusCode> {
@@ -305,12 +494,16 @@ pub async fn delete_note(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, StatusCode> {
-    let guard = state.db.lock().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    // Media files of the deleted islands are unlinked in a later phase; the rows
-    // are what the app reads, so the soft delete is already the source of truth.
-    guard
-        .delete_note(&id)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let paths = {
+        let guard = state.db.lock().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        guard.delete_note(&id).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+    };
+    // A file that refuses to go is litter, not an error: the row is what the app
+    // reads, so the delete has already succeeded as far as the user is concerned.
+    for rel in paths {
+        let _ = fs::remove_file(state.data_dir.join(rel)).await;
+    }
+    let _ = fs::remove_dir_all(state.data_dir.join("media").join(&id)).await;
     let _ = state.broadcast.send(());
     Ok(StatusCode::NO_CONTENT)
 }
@@ -363,10 +556,13 @@ pub async fn delete_island(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, StatusCode> {
-    let guard = state.db.lock().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    guard
-        .delete_island(&id)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let path = {
+        let guard = state.db.lock().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        guard.delete_island(&id).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+    };
+    if let Some(rel) = path {
+        let _ = fs::remove_file(state.data_dir.join(rel)).await;
+    }
     let _ = state.broadcast.send(());
     Ok(StatusCode::NO_CONTENT)
 }

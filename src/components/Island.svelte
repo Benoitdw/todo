@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { api } from '../lib/api';
   import LinkPicker from './LinkPicker.svelte';
   import RefText from './RefText.svelte';
   import { refStore, makeToken } from '../lib/refs.svelte';
@@ -6,7 +7,9 @@
 
   let {
     island,
+    upload = null,
     dragOver = false,
+    onRetry,
     onEdit,
     onDelete,
     onDragStart,
@@ -16,7 +19,9 @@
     onDragEnd,
   }: {
     island: Island;
+    upload?: { progress: number; error: string | null } | null;
     dragOver?: boolean;
+    onRetry: (id: string) => void;
     onEdit: (id: string, text: string) => Promise<void>;
     onDelete: (id: string) => Promise<void>;
     onDragStart: (e: DragEvent, id: string) => void;
@@ -118,6 +123,31 @@
   ondragend={onDragEnd}
 >
   <div class="content">
+    {#if island.kind !== 'text'}
+      <div class="media">
+        {#if island.media_path}
+          {#if island.kind === 'photo'}
+            <img src={api.islandMediaUrl(island.id)} alt={island.text || 'Photo'} />
+          {:else if island.kind === 'video'}
+            <!-- svelte-ignore a11y_media_has_caption -->
+            <video src={api.islandMediaUrl(island.id)} controls preload="metadata"></video>
+          {:else}
+            <audio src={api.islandMediaUrl(island.id)} controls preload="metadata"></audio>
+          {/if}
+        {:else if upload && !upload.error}
+          <div class="ph">
+            <div class="bar"><div class="fill" style="width: {Math.round(upload.progress * 100)}%"></div></div>
+            <p class="kicker">Envoi… {Math.round(upload.progress * 100)}&thinsp;%</p>
+          </div>
+        {:else}
+          <div class="ph failed">
+            <p class="kicker warn">{upload?.error ?? 'Média manquant'}</p>
+            <button class="kicker retry" onclick={() => onRetry(island.id)}>Réessayer</button>
+          </div>
+        {/if}
+      </div>
+    {/if}
+
     {#if editing}
       <!-- A text island is a multi-line body, so Enter inserts a newline:
            blur commits, Ctrl/Cmd+Enter commits, Escape cancels. The raw
@@ -150,7 +180,7 @@
         tabindex="0"
         ondblclick={startEdit}
         onkeydown={(e) => e.key === 'Enter' && startEdit()}
-      >{#if island.text}<RefText text={island.text} />{:else}<span class="placeholder">Double-clic pour écrire</span>{/if}</div>
+      >{#if island.text}<RefText text={island.text} />{:else}<span class="placeholder">{island.kind === 'text' ? 'Double-clic pour écrire' : 'Double-clic pour légender'}</span>{/if}</div>
     {/if}
   </div>
 
@@ -194,6 +224,47 @@
 
   /* anchors the palette to the field it was opened from */
   .editor-wrap { position: relative; }
+
+  .media { margin-bottom: var(--bl); }
+
+  .media img,
+  .media video {
+    display: block;
+    max-width: 100%;
+    max-height: 420px;
+    border: 1px solid var(--rule);
+  }
+
+  .media audio { width: 100%; max-width: 420px; }
+
+  /* placeholder occupying the media's future space, so nothing jumps on arrival */
+  .ph {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: var(--bl);
+    min-height: 96px;                /* 12 baselines */
+    padding: var(--bl) 12px;
+    border: 1px solid var(--rule);
+    background: var(--wash);
+  }
+
+  .ph.failed { border-color: var(--accent); }
+
+  .bar { height: 2px; background: var(--rule); }
+  .fill { height: 100%; background: var(--accent); transition: width 0.18s linear; }
+
+  .warn { color: var(--accent); }
+
+  .retry {
+    align-self: flex-start;
+    padding: 0;
+    color: var(--ink-mid);
+    text-decoration: underline;
+    transition: color 0.14s ease;
+  }
+
+  .retry:hover { color: var(--accent); }
 
   .editor {
     width: 100%;
