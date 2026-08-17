@@ -8,8 +8,10 @@
   let {
     island,
     upload = null,
+    mediaVersion = 0,
     dragOver = false,
     onRetry,
+    onEditSketch,
     onEdit,
     onDelete,
     onDragStart,
@@ -20,8 +22,11 @@
   }: {
     island: Island;
     upload?: { progress: number; error: string | null } | null;
+    /** Bumped when a sketch is resaved, to defeat the image cache. */
+    mediaVersion?: number;
     dragOver?: boolean;
     onRetry: (id: string) => void;
+    onEditSketch: (id: string) => void;
     onEdit: (id: string, text: string) => Promise<void>;
     onDelete: (id: string) => Promise<void>;
     onDragStart: (e: DragEvent, id: string) => void;
@@ -128,6 +133,17 @@
         {#if island.media_path}
           {#if island.kind === 'photo'}
             <img src={api.islandMediaUrl(island.id)} alt={island.text || 'Photo'} />
+          {:else if island.kind === 'sketch'}
+            <!-- Rendered as a plain image: <img> never executes script inside an
+                 SVG, unlike an inline or <object> embed. -->
+            <img
+              class="sketch"
+              src="{api.islandMediaUrl(island.id)}&v={mediaVersion}"
+              alt={island.text || 'Croquis'}
+            />
+            <button class="kicker edit-sketch" onclick={() => onEditSketch(island.id)}>
+              Modifier le croquis
+            </button>
           {:else if island.kind === 'video'}
             <!-- svelte-ignore a11y_media_has_caption -->
             <video src={api.islandMediaUrl(island.id)} controls preload="metadata"></video>
@@ -236,6 +252,19 @@
   }
 
   .media audio { width: 100%; max-width: 420px; }
+
+  .media img.sketch { background: var(--paper); }
+
+  .edit-sketch {
+    display: block;
+    margin-top: var(--bl);
+    padding: 0;
+    color: var(--ink-mid);
+    text-decoration: underline;
+    transition: color 0.14s ease;
+  }
+
+  .edit-sketch:hover { color: var(--accent); }
 
   /* placeholder occupying the media's future space, so nothing jumps on arrival */
   .ph {

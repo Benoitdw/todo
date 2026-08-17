@@ -129,6 +129,45 @@ impl Database {
             )?;
         }
 
+        if version < 4 {
+            // Adding 'sketch' to islands.kind means widening a CHECK constraint,
+            // which SQLite can only do by rebuilding the table. Every column and
+            // every row is carried over verbatim; nothing else changes.
+            self.conn.execute_batch(
+                "
+                PRAGMA foreign_keys = OFF;
+
+                CREATE TABLE islands_v4 (
+                    id         TEXT PRIMARY KEY,
+                    note_id    TEXT NOT NULL REFERENCES notes(id),
+                    kind       TEXT NOT NULL CHECK (kind IN ('text','photo','video','audio','sketch')),
+                    text       TEXT NOT NULL DEFAULT '',
+                    pos        REAL NOT NULL,
+                    media_path TEXT,
+                    media_mime TEXT,
+                    media_size INTEGER,
+                    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S%.3fZ','now')),
+                    deleted_at TEXT
+                );
+
+                INSERT INTO islands_v4
+                    (id, note_id, kind, text, pos, media_path, media_mime, media_size,
+                     updated_at, deleted_at)
+                SELECT id, note_id, kind, text, pos, media_path, media_mime, media_size,
+                       updated_at, deleted_at
+                FROM islands;
+
+                DROP TABLE islands;
+                ALTER TABLE islands_v4 RENAME TO islands;
+
+                CREATE INDEX IF NOT EXISTS idx_islands_note ON islands(note_id);
+
+                PRAGMA foreign_keys = ON;
+                PRAGMA user_version = 4;
+                ",
+            )?;
+        }
+
         Ok(())
     }
 

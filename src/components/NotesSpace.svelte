@@ -2,6 +2,7 @@
   import { api } from '../lib/api';
   import { optical } from '../lib/optical';
   import Island from './Island.svelte';
+  import SketchEditor from './SketchEditor.svelte';
   import { AudioRecorder, audioSupport, formatDuration } from '../lib/recorder.svelte';
   import type { Island as IslandType, IslandKind, Note } from '../lib/types';
 
@@ -86,7 +87,43 @@
     photo: 15 * 1024 * 1024,
     audio: 25 * 1024 * 1024,
     video: 200 * 1024 * 1024,
+    sketch: 5 * 1024 * 1024,
   };
+
+  // Which sketch the editor is open on: an existing island, or null for a new one.
+  let sketching = $state<{ islandId: string | null; svg: string | null } | null>(null);
+
+  async function openSketch(islandId: string | null) {
+    if (!islandId) {
+      sketching = { islandId: null, svg: null };
+      return;
+    }
+    // Reopening: the stored SVG is fetched back and handed to the editor, which
+    // is the whole point of keeping sketches as markup rather than pixels.
+    try {
+      const resp = await fetch(api.islandMediaUrl(islandId));
+      sketching = { islandId, svg: resp.ok ? await resp.text() : null };
+    } catch {
+      showError('Croquis introuvable');
+    }
+  }
+
+  async function saveSketch(svg: string) {
+    const blob = new Blob([svg], { type: 'image/svg+xml' });
+    const target = sketching?.islandId ?? null;
+    sketching = null;
+    if (target) {
+      await upload(target, blob, 'image/svg+xml');
+      // The <img> keeps the old bytes on the same URL, so force a reload.
+      islands = islands.map(i => i.id === target ? { ...i } : i);
+      mediaVersion += 1;
+    } else {
+      await addMediaIsland('sketch', blob, 'image/svg+xml');
+    }
+  }
+
+  /** Bumped on every sketch resave to bust the browser's image cache. */
+  let mediaVersion = $state(0);
 
   /** Creates the island first — its id is what the file path and links hang off. */
   async function addMediaIsland(kind: IslandKind, blob: Blob, mime: string) {
@@ -268,8 +305,10 @@
             <Island
               {island}
               upload={uploads[island.id] ?? null}
+              {mediaVersion}
               dragOver={dragOverId === island.id}
               onRetry={retryUpload}
+              onEditSketch={openSketch}
               onEdit={editIsland}
               onDelete={deleteIsland}
               onDragStart={handleDragStart}
@@ -305,6 +344,7 @@
               <button class="btn accent" onclick={() => addIsland('text')}>+&nbsp;&nbsp;Texte</button>
               <button class="btn" onclick={() => pickFileFor('photo')}>Photo</button>
               <button class="btn" onclick={() => pickFileFor('video')}>Vidéo</button>
+              <button class="btn" onclick={() => openSketch(null)}>Croquis</button>
               <button
                 class="btn"
                 disabled={!audioOk.ok || recorder.state === 'requesting'}
@@ -331,6 +371,17 @@
     />
   </div>
 </main>
+
+<!-- Outside <main>: .spread animates a transform, which would make it the
+     containing block of a position:fixed child and clip the editor to the
+     content column instead of the viewport. -->
+{#if sketching}
+  <SketchEditor
+    initialSvg={sketching.svg}
+    onSave={saveSketch}
+    onCancel={() => sketching = null}
+  />
+{/if}
 
 <style>
   .spread.nav-transition {

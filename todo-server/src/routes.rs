@@ -119,6 +119,8 @@ fn clean_labels(mut refs: Vec<Ref>) -> Vec<Ref> {
 const DEFAULT_PHOTO_MB: usize = 15;
 const DEFAULT_AUDIO_MB: usize = 25;
 const DEFAULT_VIDEO_MB: usize = 200;
+/// A sketch is vector markup, not pixels — it has no business being large.
+const DEFAULT_SKETCH_MB: usize = 5;
 
 fn env_mb(key: &str, default: usize) -> usize {
     std::env::var(key)
@@ -144,6 +146,7 @@ fn max_bytes_for(kind: &str) -> Option<usize> {
         "photo" => Some(env_mb("MAX_PHOTO_MB", DEFAULT_PHOTO_MB)),
         "audio" => Some(env_mb("MAX_AUDIO_MB", DEFAULT_AUDIO_MB)),
         "video" => Some(env_mb("MAX_VIDEO_MB", DEFAULT_VIDEO_MB)),
+        "sketch" => Some(env_mb("MAX_SKETCH_MB", DEFAULT_SKETCH_MB)),
         _ => None, // a text island carries no binary
     }
 }
@@ -154,6 +157,9 @@ fn mime_matches_kind(mime: &str, kind: &str) -> bool {
         "photo" => base.starts_with("image/"),
         "audio" => base.starts_with("audio/"),
         "video" => base.starts_with("video/"),
+        // A sketch is stored as the SVG the editor produced: an image the
+        // browser can display, and markup the editor can load back for editing.
+        "sketch" => base == "image/svg+xml",
         _ => false,
     }
 }
@@ -164,6 +170,7 @@ fn ext_for_mime(mime: &str) -> &'static str {
         "image/jpeg" => "jpg",
         "image/png" => "png",
         "image/heic" | "image/heif" => "heic",
+        "image/svg+xml" => "svg",
         "image/webp" => "webp",
         "image/gif" => "gif",
         "video/mp4" => "mp4",
@@ -192,8 +199,11 @@ pub async fn put_island_media(
     }
     .ok_or(StatusCode::NOT_FOUND)?;
 
-    if island.media_path.is_some() {
-        // One island carries exactly one binary; replacing means delete + recreate.
+    // A captured photo, video or audio is a one-shot: one island, one binary,
+    // replacing means delete and recreate. A sketch is the exception — it is
+    // meant to be reopened and saved again.
+    let previous = island.media_path.clone();
+    if previous.is_some() && island.kind != "sketch" {
         return Err(StatusCode::CONFLICT);
     }
     let max = max_bytes_for(&island.kind).ok_or(StatusCode::UNSUPPORTED_MEDIA_TYPE)?;
@@ -251,6 +261,11 @@ pub async fn put_island_media(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let rel = format!("media/{}/{}", island.note_id, final_name);
+    // On a sketch resave the extension is identical, so the rename above already
+    // overwrote the file; this only matters if a previous save used another mime.
+    if let Some(old) = previous.filter(|p| *p != rel) {
+        let _ = fs::remove_file(state.data_dir.join(old)).await;
+    }
     let guard = state.db.lock().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     guard
         .set_island_media(&id, &rel, &mime, written as i64)
@@ -522,7 +537,7 @@ pub async fn create_island(
     Json(body): Json<CreateIsland>,
 ) -> Result<Json<Island>, StatusCode> {
     // Rejected here rather than by the CHECK constraint, which would surface as a 500.
-    if !matches!(body.kind.as_str(), "text" | "photo" | "video" | "audio") {
+    if !matches!(body.kind.as_str(), "text" | "photo" | "video" | "audio" | "sketch") {
         return Err(StatusCode::BAD_REQUEST);
     }
     let id = Uuid::new_v4().to_string();

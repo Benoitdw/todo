@@ -26,7 +26,7 @@ export interface SidebarEntry {
   pos: number;
 }
 
-export type IslandKind = 'text' | 'photo' | 'video' | 'audio';
+export type IslandKind = 'text' | 'photo' | 'video' | 'audio' | 'sketch';
 
 export interface Note {
   id: string;
