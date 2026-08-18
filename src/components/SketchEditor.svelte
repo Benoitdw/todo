@@ -21,15 +21,41 @@
     (async () => {
       // The prebuilt stylesheet, not `js-draw/styles`: that entry points at raw
       // SCSS and would drag a sass toolchain into the build for nothing.
-      const [{ Editor }] = await Promise.all([
+      const [jsdraw] = await Promise.all([
         import('js-draw'),
         import('js-draw/Editor.css'),
       ]);
       if (disposed || !host) return;
 
+      const {
+        Editor, PenTool, Color4,
+        makeArrowBuilder, makeOutlinedRectangleBuilder, makeOutlinedCircleBuilder,
+      } = jsdraw;
+
       editor = new Editor(host, {
         wheelEventsEnabled: 'only-if-focused',
       });
+
+      // Arrow, rectangle and circle exist in js-draw but only inside the pen
+      // dropdown. The toolbar builds one button per *primary* pen tool, so
+      // registering them here — before addToolbar — promotes them to real
+      // top-level tools.
+      const ink = Color4.fromHex('#111315');
+      const shapes = [
+        ['Flèche', makeArrowBuilder],
+        ['Rectangle', makeOutlinedRectangleBuilder],
+        ['Cercle', makeOutlinedCircleBuilder],
+      ] as const;
+      for (const [label, factory] of shapes) {
+        editor.toolController.addPrimaryTool(
+          new PenTool(editor, label, { factory, color: ink, thickness: 4 }),
+        );
+      }
+
+      // Registering tools activates the last one added, which would open every
+      // sketch on the circle tool. Hand it back to the first pen.
+      editor.toolController.getPrimaryTools()[0]?.setEnabled(true);
+
       editor.addToolbar();
       editor.getRootElement().style.height = '100%';
 

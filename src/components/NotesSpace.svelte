@@ -341,16 +341,46 @@
             </div>
           {:else}
             <div class="kinds">
-              <button class="btn accent" onclick={() => addIsland('text')}>+&nbsp;&nbsp;Texte</button>
-              <button class="btn" onclick={() => pickFileFor('photo')}>Photo</button>
-              <button class="btn" onclick={() => pickFileFor('video')}>Vidéo</button>
-              <button class="btn" onclick={() => openSketch(null)}>Croquis</button>
+              <!-- Both faces are always in the DOM: the label carries the button
+                   on a wide screen, the glyph on a phone, and `aria-label` names
+                   it either way so the icon-only row stays readable to a reader. -->
+              <button class="btn accent" aria-label="Ajouter du texte" onclick={() => addIsland('text')}>
+                <svg class="ico" viewBox="0 0 14 14" fill="none" width="18" height="18" aria-hidden="true">
+                  <path d="M2 3h10M2 7h10M2 11h6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+                </svg>
+                <span class="lbl">+&nbsp;&nbsp;Texte</span>
+              </button>
+              <button class="btn" aria-label="Ajouter une photo" onclick={() => pickFileFor('photo')}>
+                <svg class="ico" viewBox="0 0 14 14" fill="none" width="18" height="18" aria-hidden="true">
+                  <path d="M1.5 2.5h11v9h-11z M1.5 9.3 5 6.2l2.8 2.5 2-1.6 2.7 2.4" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
+                  <circle cx="4.6" cy="5" r="1" stroke="currentColor" stroke-width="1.2"/>
+                </svg>
+                <span class="lbl">Photo</span>
+              </button>
+              <button class="btn" aria-label="Ajouter une vidéo" onclick={() => pickFileFor('video')}>
+                <svg class="ico" viewBox="0 0 14 14" fill="none" width="18" height="18" aria-hidden="true">
+                  <path d="M1.5 3.5h7v7h-7z M8.5 7l4-2.2v4.4z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
+                </svg>
+                <span class="lbl">Vidéo</span>
+              </button>
+              <button class="btn" aria-label="Ajouter un croquis" onclick={() => openSketch(null)}>
+                <svg class="ico" viewBox="0 0 14 14" fill="none" width="18" height="18" aria-hidden="true">
+                  <path d="M9.4 1.9 12.1 4.6l-7 7-3.3.6.6-3.3z M8.1 3.2l2.7 2.7" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
+                </svg>
+                <span class="lbl">Croquis</span>
+              </button>
               <button
                 class="btn"
+                aria-label={audioOk.ok ? 'Enregistrer un mémo audio' : audioOk.reason}
                 disabled={!audioOk.ok || recorder.state === 'requesting'}
                 title={audioOk.ok ? 'Enregistrer un mémo' : audioOk.reason}
                 onclick={recordAudio}
-              >{recorder.state === 'requesting' ? 'Micro…' : 'Audio'}</button>
+              >
+                <svg class="ico" viewBox="0 0 14 14" fill="none" width="18" height="18" aria-hidden="true">
+                  <path d="M7 1.6a1.7 1.7 0 0 1 1.7 1.7v3.3a1.7 1.7 0 0 1-3.4 0V3.3A1.7 1.7 0 0 1 7 1.6z M3.6 6.4a3.4 3.4 0 0 0 6.8 0 M7 10v2.4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <span class="lbl">{recorder.state === 'requesting' ? 'Micro…' : 'Audio'}</span>
+              </button>
               {#if !audioOk.ok}
                 <span class="kicker unavailable">{audioOk.reason}</span>
               {/if}
@@ -451,6 +481,8 @@
 
   .empty-row { padding: var(--lh) 0; }
 
+  .ico { display: none; }
+
   .kinds,
   .recording {
     grid-column: 1 / -1;
@@ -492,8 +524,43 @@
     .menu { grid-column: 1 / 7; }
     .section { display: none; }
     .masthead { grid-column: 1 / -1; }
-    .kinds { flex-wrap: wrap; }
-    .unavailable { flex-basis: 100%; margin-left: 0; }
+    /* Five buttons wrapped onto two rows ate a third of the screen. One row
+       that scrolls sideways costs a single button height instead. */
+    .composer {
+      padding: var(--bl) var(--margin) calc(var(--bl) + env(safe-area-inset-bottom, 0px));
+    }
+
+    .kinds {
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      gap: 6px;
+      /* Bleeds to the screen edges so the last button can scroll fully into
+         view instead of stopping under the margin. */
+      margin: 0 calc(-1 * var(--margin));
+      padding: 0 var(--margin);
+      scrollbar-width: none;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior-x: contain;
+    }
+
+    .kinds::-webkit-scrollbar { display: none; }
+
+    /* Icon-only squares: five of them fit the narrowest phone with room to
+       spare, so the row never has to scroll. */
+    .kinds .btn {
+      flex: 0 0 auto;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 44px;
+      height: 40px;
+      padding: 0;
+    }
+
+    .kinds .btn .ico { display: block; }
+    .kinds .btn .lbl { display: none; }
+
+    .unavailable { margin-left: 4px; white-space: nowrap; }
 
     .meta-col {
       grid-column: 1 / -1;

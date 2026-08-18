@@ -86,10 +86,12 @@
       // An unknown note id falls back to the list of notes rather than a blank
       // screen, and the URL is corrected so a reload lands somewhere real.
       if (route.noteId && !notes.some(n => n.id === route.noteId)) {
-        selectedNoteId = null;
+        selectedNoteId = firstNoteId();
         navigate('/notes', true);
       } else {
-        selectedNoteId = route.noteId;
+        // Bare "/notes" opens the first note rather than an empty screen —
+        // the same courtesy "/" extends to the first list.
+        selectedNoteId = route.noteId ?? firstNoteId();
       }
     } else if (route.listId) {
       if (lists.some(l => l.id === route.listId)) {
@@ -100,6 +102,10 @@
     }
     navKey++;
     scrollToHash();
+  }
+
+  function firstNoteId(): string | null {
+    return notes[0]?.id ?? null;
   }
 
   async function ensureNotes() {
@@ -117,6 +123,7 @@
     if (next === 'notes') {
       await ensureNotes();
       mode = 'notes';
+      selectedNoteId ??= firstNoteId();
       navigate(selectedNoteId ? `/notes/${selectedNoteId}` : '/notes');
     } else {
       mode = 'lists';
@@ -381,6 +388,11 @@
             />
           {:else}
             <div class="empty">
+              {#if isMobile}
+                <button class="kicker menu" onclick={() => sidebarOpen = true} aria-label="Ouvrir les notes">
+                  ☰&nbsp;&nbsp;Notes
+                </button>
+              {/if}
               <p class="kicker">Crée une note pour commencer</p>
             </div>
           {/if}
@@ -395,6 +407,11 @@
           />
         {:else}
           <div class="empty">
+            {#if isMobile}
+              <button class="kicker menu" onclick={() => sidebarOpen = true} aria-label="Ouvrir les listes">
+                ☰&nbsp;&nbsp;Listes
+              </button>
+            {/if}
             <p class="kicker">Crée une liste pour commencer</p>
           </div>
         {/if}
@@ -481,8 +498,21 @@
 
   .empty {
     flex: 1;
+    position: relative;
     display: flex;
     align-items: center;
     justify-content: center;
   }
+
+  /* Without a list or a note there is no header to hang the drawer toggle on,
+     and on mobile the sidebar starts closed — this is the only way back. */
+  .empty .menu {
+    position: absolute;
+    top: var(--pad);
+    left: var(--margin);
+    padding: 0;
+    transition: color 0.14s ease;
+  }
+
+  .empty .menu:hover { color: var(--accent); }
 </style>
